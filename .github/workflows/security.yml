@@ -1,0 +1,170 @@
+name: Security
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  schedule:
+    # Weekly on Monday at 09:00 UTC
+    - cron: '0 9 * * 1'
+
+jobs:
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+
+      # Production deps get a tighter bar (moderate) — these ship to users.
+      # Dev deps stay at high to keep noise manageable.
+      - name: Audit backend (production, moderate)
+        working-directory: backend
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Audit backend (dev, high)
+        working-directory: backend
+        run: npm audit --audit-level=high
+
+      - name: Audit frontend (production, moderate)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Audit frontend (dev, high)
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+      # Verify every installed tarball has a valid registry signature.
+      # Catches forged tarballs / tampered registry metadata at install time.
+      # Requires a fresh install since `audit signatures` reads node_modules.
+      - name: Install backend (for signature audit)
+        working-directory: backend
+        run: npm ci --ignore-scripts
+
+      - name: Verify backend signatures
+        working-directory: backend
+        run: npm audit signatures
+
+      - name: Install frontend (for signature audit)
+        working-directory: frontend
+        run: npm ci --ignore-scripts
+
+      - name: Verify frontend signatures
+        working-directory: frontend
+        run: npm audit signatures
+
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    # Only runs on pull requests — compares new deps against known vulnerabilities
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: always
+
+  trivy-fs:
+    name: Trivy filesystem scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Run Trivy on repository
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-fs.sarif
+          trivyignores: .trivyignore
+          limit-severities-for-sarif: true
+          exit-code: '1'  # Fail the build on HIGH/CRITICAL vulnerabilities
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        if: always()
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+  trivy-docker:
+    name: Trivy Docker image scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Build Docker image
+        run: docker build -t archivum-null:ci .
+
+      - name: Run Trivy on Docker image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: archivum-null:ci
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-docker.sarif
+          trivyignores: .trivyignore
+          limit-severities-for-sarif: true
+          exit-code: '1'  # Fail the build on HIGH/CRITICAL vulnerabilities
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        if: always()
+        with:
+          sarif_file: trivy-docker.sarif
+          category: trivy-docker
+
+  # Every action in these workflows is pinned to a commit SHA, with its version
+  # in a comment. This checks that each SHA is the commit of the version named
+  # beside it, so a wrong SHA and a tag moved upstream both fail here.
+  pins:
+    name: Pinned actions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Check each SHA against the tag it names
+        run: .github/scripts/verify-pins.sh
+
+  # Dependabot raises no alert for an action pinned by SHA, so this asks GitHub's
+  # advisory database about every pinned version in its place.
+  actions-audit:
+    name: Actions audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Look up each pinned version in the advisory database
+        run: .github/scripts/verify-pins.sh --advisories
+        env:
+          GH_TOKEN: ${{ github.token }}

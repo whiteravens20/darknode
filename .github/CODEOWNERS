@@ -1,0 +1,22 @@
+# ── Code Owners ──────────────────────────────────────────────────────────────
+# Auto-requests review from the listed owner on any PR touching these paths, and
+# documents where the blast radius is largest.
+#
+# Do NOT turn on "Require review from Code Owners" in branch protection on a
+# solo repo. Nobody can approve their own PR, so that setting combined with
+# enforce_admins makes every PR permanently unmergeable. The merge gate here is
+# CI (required status checks) — see /wr-standards, "Promoting a repo to v1".
+#
+# Paths are checked most-specific to least-specific; last matching rule wins.
+
+# ── CI/CD & supply chain ──────────────────────────────────────────────────────
+# Any change to workflow files or Dependabot config is high-risk supply-chain.
+/.github/ @pavlojs
+
+# ── Security & legal docs ─────────────────────────────────────────────────────
+/SECURITY.md @pavlojs
+/LICENSE @pavlojs
+
+# TODO for the maintainer: list the paths where a mistake costs most in this
+# project (authentication, cryptography, storage, container config), each with
+# a line saying why.

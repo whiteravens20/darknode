@@ -1,0 +1,47 @@
+# ── OpenSSF Scorecard ─────────────────────────────────────────────────────────
+#
+# Part of the baseline of every public White Ravens repo that ships software;
+# a website goes without it. Scores the
+# repository's security practices on every push to the default branch and
+# weekly, and publishes the result to the public Scorecard API, which serves the
+# README badge and, for a flagship, the gate in
+# infrastructure/reference/gates.yaml. Findings are not uploaded to code scanning.
+#
+# The push trigger must name the default branch: Scorecard only publishes
+# results for it.
+#
+# Publishing restricts this workflow: no top-level env or write permissions,
+# and the job may only use the actions the Scorecard API accepts.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Scorecard
+
+on:
+  push:
+    branches: [dev]
+  schedule:
+    # Run weekly on Monday at 07:00 UTC
+    - cron: '0 7 * * 1'
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # Publish the results to the Scorecard API
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run Scorecard
+        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: results.json
+          results_format: json
+          publish_results: true

@@ -1,0 +1,129 @@
+name: Branch Protection Audit
+
+# Asserts that branch protection on `main` still matches expectations.
+# Drift here (re-enabling a review gate, disabling signed commits, dropping a
+# required check) silently weakens the supply chain — this catches it within
+# a day.
+#
+# A scaffolded repo starts pre-v1, so only the integrity floor is a hard assert
+# here: signed commits, no force pushes, no deletions, and no review gate that
+# would lock a solo maintainer out later. What the v1 profile adds — admins
+# bound by the rules, required status checks on `main` — is reported as a
+# warning until promotion.
+#
+# AT V1 PROMOTION, turn the three warnings at the bottom of the merge-gate
+# block into asserts and add:
+#   assert "admins bound by branch protection"        '.enforce_admins.enabled // false'
+#   assert "no approving review required"             '((.required_pull_request_reviews.required_approving_review_count // 0) == 0)'
+#   assert "linear history not required"              '(.required_linear_history.enabled // false) | not'
+#   assert "status checks strict (branch up to date)" '.required_status_checks.strict // false'
+# See /wr-standards -> "Promoting a repo to v1".
+
+on:
+  schedule:
+    # Daily at 07:00 UTC
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  audit:
+    name: Verify main branch protection
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Reading branch-protection settings requires admin scope on the repo;
+      # provide a fine-grained PAT as `BRANCH_PROTECTION_READ_TOKEN` repo secret
+      # with `Administration: read` on this repo only. If absent, the job
+      # falls back to GITHUB_TOKEN and may report partial data.
+    steps:
+      - name: Fetch protection rules for main
+        env:
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_READ_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          PROT=$(gh api "repos/${REPO}/branches/main/protection" 2>/dev/null) || PROT='{}'
+
+          if [ "$PROT" = "{}" ] || [ -z "$PROT" ] || ! echo "$PROT" | jq -e 'has("enforce_admins")' >/dev/null 2>&1; then
+            echo "::error::Could not fetch branch protection. Ensure the workflow has 'administration: read' permission or set BRANCH_PROTECTION_READ_TOKEN with 'Administration: read'."
+            exit 1
+          fi
+
+          echo "$PROT" | jq .
+
+          fail=0
+          assert() {
+            local label="$1"
+            local expr="$2"
+            if [ "$(echo "$PROT" | jq -r "$expr")" != "true" ]; then
+              echo "::error::Branch protection drift — expected: ${label}"
+              fail=1
+            else
+              echo "ok: ${label}"
+            fi
+          }
+
+          warn() {
+            echo "::warning::$1"
+          }
+
+          # --- merge gate ---
+          # Code-owner review must not be a merge gate: GitHub never lets anyone
+          # approve their own PR, so on a one-person repo it is a lockout the day
+          # `enforce_admins` is turned on. CODEOWNERS still auto-requests review.
+          assert "code-owner review not a merge gate"       '(.required_pull_request_reviews.require_code_owner_reviews // false) | not'
+
+          # --- integrity ---
+          assert "signed commits required"                  '.required_signatures.enabled // false'
+          assert "force pushes blocked"                     '(.allow_force_pushes.enabled // false) | not'
+          assert "branch deletions blocked"                 '(.allow_deletions.enabled // false) | not'
+
+          # --- pre-v1 gaps, reported not enforced ---
+          if [ "$(echo "$PROT" | jq -r '.enforce_admins.enabled // false')" != "true" ]; then
+            warn "enforce_admins is off — branch protection does not bind the maintainer. Turn it on at v1 promotion."
+          fi
+          if [ "$(echo "$PROT" | jq -r '(.required_pull_request_reviews.required_approving_review_count // 0) > 0')" = "true" ]; then
+            warn "main requires an approving review; combined with enforce_admins that would make every PR unmergeable on a solo repo."
+          fi
+          if [ "$(echo "$PROT" | jq -r '.required_linear_history.enabled // false')" = "true" ]; then
+            warn "linear history is required — clear it before v1: a dev -> main release PR lands as a merge commit."
+          fi
+
+          # Required CI contexts that must pass before merge. These are the
+          # check names GitHub actually reports, not the workflow job ids — a
+          # matrix job reports its name with the matrix value appended, so a
+          # name no job ever produces can never be satisfied and blocks every
+          # merge.
+          #
+          # >>> SCAFFOLD: replace MUST_HAVE with the check names THIS repo
+          # >>> actually reports, then promote the warning below to an error at
+          # >>> v1. Confirm the real names with:
+          # >>>   gh api repos/OWNER/REPO/commits/dev/check-runs \
+          # >>>     --jq '.check_runs[].name'
+          MUST_HAVE=("test" "Analyze (javascript-typescript)" "npm audit" "Trivy filesystem scan")
+
+          REQUIRED_CHECKS=$(echo "$PROT" | jq -r '.required_status_checks.contexts[]? // empty' | sort)
+          if [ -z "$REQUIRED_CHECKS" ]; then
+            echo "Configured required checks: (none)"
+            warn "main has no required status checks at all — nothing gates a merge but the maintainer's judgement."
+          else
+            echo "Configured required checks:"
+            echo "$REQUIRED_CHECKS" | sed 's/^/  - /'
+          fi
+
+          for must in "${MUST_HAVE[@]}"; do
+            if ! echo "$REQUIRED_CHECKS" | grep -Fxq "$must"; then
+              warn "Required status check missing (recommended): '${must}'"
+            fi
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Branch-protection audit FAILED — see annotations above."
+            exit 1
+          fi
+
+          echo "Branch-protection audit passed."
