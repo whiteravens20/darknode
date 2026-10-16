@@ -1,0 +1,29 @@
+id: meridian-savings
+name: Meridian Savings
+type: BANK
+faction: CORPORATE
+location: { x: 60, y: 30 }
+servers:
+  - id: meridian-savings
+    name: Meridian Savings
+    ip: 172.16.10.1
+    security: 6
+    proxy: true
+    firewall: true
+    monitor: true
+    files:
+      - path: /pub/hours.txt
+        size_mb: 1
+        content: |
+          Meridian Savings. Accounts opened at any branch. Our systems are
+          audited twice a year and we have never lost a customer's money.
+      - path: /data/accounts.db
+        size_mb: 15
+        sensitive: true
+        content: Every account held at the bank, with its balance and its holder.
+      - path: /admin/audit-q3.doc
+        size_mb: 3
+        content: |
+          Third-quarter audit: passed. One finding, carried over from last
+          year: the proxy and the firewall are managed by the same team, so
+          one careless change opens both.

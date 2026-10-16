@@ -1,0 +1,21 @@
+id: internic
+name: InterNIC Registry
+type: INTERNIC
+location: { x: 30, y: 20 }
+servers:
+  - id: internic
+    name: InterNIC Registry
+    ip: 10.10.10.10
+    security: 4
+    firewall: true
+    files:
+      - path: /pub/about.txt
+        size_mb: 1
+        content: |
+          The public register of every organisation with an address. Reading
+          the register is free and nobody minds. What the register does not
+          hold is what is on those machines.
+      - path: /data/registry.db
+        size_mb: 12
+        sensitive: true
+        content: The full register, including the entries their owners paid to keep off the public list.

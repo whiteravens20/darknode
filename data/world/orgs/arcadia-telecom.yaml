@@ -1,0 +1,29 @@
+id: arcadia-telecom
+name: Arcadia Telecom
+type: ISP
+location: { x: 33, y: 60 }
+servers:
+  - id: arcadia-relay-north
+    name: Arcadia Relay North
+    ip: 203.0.113.1
+    security: 2
+    files:
+      - path: /sys/routes.cfg
+        size_mb: 2
+        content: |
+          Routing table, 1,247 entries. Traffic that passes through here is
+          written to the log and kept for ninety days, as the licence says.
+      - path: /data/subscribers.db
+        size_mb: 6
+        sensitive: true
+        content: Every subscriber, with the address their line terminates at.
+
+  - id: arcadia-relay-south
+    name: Arcadia Relay South
+    ip: 203.0.113.2
+    security: 2
+    location: { x: 36, y: 66 }
+    files:
+      - path: /sys/routes.cfg
+        size_mb: 2
+        content: Routing table, 980 entries. A quiet line, mostly residential.

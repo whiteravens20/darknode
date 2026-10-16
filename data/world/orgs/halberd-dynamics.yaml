@@ -1,0 +1,33 @@
+id: halberd-dynamics
+name: Halberd Dynamics
+type: CORPORATE
+faction: CORPORATE
+location: { x: 70, y: 45 }
+servers:
+  - id: halberd-main
+    name: Halberd Dynamics
+    ip: 172.16.20.1
+    security: 4
+    firewall: true
+    monitor: true
+    files:
+      - path: /pub/about.txt
+        size_mb: 1
+        content: |
+          Halberd Dynamics builds navigation and guidance systems. Founded
+          2031. Fourteen hundred staff across three sites.
+      - path: /data/staff.db
+        size_mb: 5
+        sensitive: true
+        content: Personnel records, including the ones marked do-not-disclose.
+      - path: /projects/kestrel.doc
+        size_mb: 3
+        encrypted: true
+        sensitive: true
+        content: Project Kestrel, phase three. Encrypted at rest.
+      - path: /finance/q4-forecast.xls
+        size_mb: 4
+        sensitive: true
+        content: |
+          Fourth-quarter forecast, not yet public. Revenue down eleven per
+          cent on the guidance given to the market in August.

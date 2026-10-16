@@ -1,0 +1,70 @@
+# The programs the shop sells. A higher version does the same job faster;
+# the balance of the numbers is in the rule book, not here.
+
+software:
+  - id: pass_breaker
+    name: PassBreaker
+    description: Works out the password layer of a server you are connected to.
+    versions:
+      - { version: 1, price: 1000, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }
+      - { version: 2, price: 3000, size_mb: 3, cpu_mhz: 0, ram_mb: 0 }
+      - { version: 3, price: 8000, size_mb: 4, cpu_mhz: 0, ram_mb: 8192 }
+
+  - id: firewall_opener
+    name: FirewallOpener
+    description: Opens the firewall layer for the length of one connection.
+    versions:
+      - { version: 1, price: 1500, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }
+      - { version: 2, price: 4000, size_mb: 3, cpu_mhz: 0, ram_mb: 0 }
+
+  - id: proxy_opener
+    name: ProxyOpener
+    description: Opens the proxy layer for the length of one connection.
+    versions:
+      - { version: 1, price: 2000, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }
+      - { version: 2, price: 5000, size_mb: 3, cpu_mhz: 0, ram_mb: 0 }
+
+  - id: monitor_mask
+    name: MonitorMask
+    description: Hides a connection from a server's monitor, which slows its trace.
+    versions:
+      - { version: 1, price: 2500, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }
+
+  - id: log_wiper
+    name: LogWiper
+    description: Clears the lines you left in a server's log. Needs root there.
+    versions:
+      - { version: 1, price: 500, size_mb: 1, cpu_mhz: 0, ram_mb: 0 }
+      - { version: 2, price: 2000, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }
+      - { version: 3, price: 5000, size_mb: 3, cpu_mhz: 0, ram_mb: 0 }
+
+  - id: file_copier
+    name: FileCopier
+    description: Copies a sensitive file from a server to your gateway.
+    versions:
+      - { version: 1, price: 800, size_mb: 1, cpu_mhz: 0, ram_mb: 0 }
+
+  - id: file_shredder
+    name: FileShredder
+    description: Removes a sensitive file from a server for good.
+    versions:
+      - { version: 1, price: 1200, size_mb: 1, cpu_mhz: 0, ram_mb: 0 }
+
+  - id: decrypter
+    name: Decrypter
+    description: Makes an encrypted file readable. Heavy on the processor.
+    versions:
+      - { version: 1, price: 3000, size_mb: 3, cpu_mhz: 3000, ram_mb: 8192 }
+      - { version: 2, price: 7000, size_mb: 4, cpu_mhz: 3000, ram_mb: 8192 }
+
+  - id: address_probe
+    name: AddressProbe
+    description: Looks up a server's type and defences before you connect.
+    versions:
+      - { version: 1, price: 1500, size_mb: 1, cpu_mhz: 0, ram_mb: 0 }
+
+  - id: trace_meter
+    name: TraceMeter
+    description: Shows exactly how far a trace has come, hop by hop.
+    versions:
+      - { version: 1, price: 2000, size_mb: 1, cpu_mhz: 0, ram_mb: 0 }

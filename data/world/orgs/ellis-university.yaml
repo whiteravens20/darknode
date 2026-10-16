@@ -1,0 +1,29 @@
+id: ellis-university
+name: Ellis University
+type: UNIVERSITY
+faction: ACADEMIC
+location: { x: 55, y: 15 }
+servers:
+  - id: ellis-cs
+    name: Ellis University, Computing
+    ip: 192.0.2.10
+    security: 3
+    firewall: true
+    files:
+      - path: /pub/courses.txt
+        size_mb: 1
+        content: |
+          Computing, autumn term:
+            CS-211 Operating systems
+            CS-340 Networks and protocols
+            CS-455 Cryptography
+      - path: /academic/records.db
+        size_mb: 10
+        sensitive: true
+        content: "Student records: enrolment, marks and awards."
+      - path: /papers/trace-timing.pdf
+        size_mb: 5
+        content: |
+          "On the timing of route reconstruction", Okonkwo and Vance. Shows
+          that a reconstruction slows down in proportion to how little each
+          intermediate operator is obliged to retain.

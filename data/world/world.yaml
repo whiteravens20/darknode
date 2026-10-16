@@ -1,0 +1,20 @@
+# The world's starting point. Every player shares this catalogue; what a
+# player does to the world is kept per run, beside it.
+
+# The in-fiction date the world starts from. The shared clock counts from the
+# moment the instance was first started, at sixty times real speed.
+epoch: 2049-01-01T00:00:00Z
+
+start:
+  # The addresses a new agent already has.
+  links:
+    - practice-machine
+    - darknode-help
+    - internic
+    - meridian-savings
+  # The bank that holds the first account.
+  bank: meridian-savings
+  # The programs a new gateway comes with.
+  software:
+    - { id: pass_breaker, version: 1 }
+    - { id: log_wiper, version: 1 }

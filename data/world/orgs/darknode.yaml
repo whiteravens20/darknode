@@ -1,0 +1,60 @@
+id: darknode
+name: DarkNode
+type: DARKNODE_TEST
+faction: UNDERGROUND
+location: { x: 42, y: 38 }
+servers:
+  - id: practice-machine
+    name: DarkNode Practice Machine
+    ip: 10.0.0.1
+    security: 1
+    files:
+      - path: /readme.txt
+        size_mb: 1
+        content: |
+          This machine is here to be broken into. Nothing on it matters and
+          nobody watches it. Try your programs, read the files, clear the log
+          afterwards, and get out. When that feels easy, try something that
+          belongs to somebody.
+      - path: /usr/notes.txt
+        size_mb: 1
+        content: |
+          Order of work, every time:
+            1. Plan a route through relays, so a trace has ground to cover.
+            2. Connect.
+            3. Open the layers the server has, outermost first.
+            4. Do what you came for.
+            5. Clear your lines from the log, here and on every relay.
+            6. Leave before the trace arrives.
+
+  - id: darknode-help
+    name: DarkNode Handbook
+    ip: 10.0.0.2
+    security: 1
+    files:
+      - path: /help/start.txt
+        size_mb: 1
+        content: |
+          You are an agent with one computer, a gateway, and a list of
+          addresses. Work comes as contracts. Money buys better programs and
+          better hardware; a reputation buys harder contracts.
+
+          `help` lists the commands. `status` shows what you have. `servers`
+          lists the addresses you know.
+      - path: /help/traces.txt
+        size_mb: 1
+        content: |
+          Connect to anything that is not a public service and it starts
+          working out where you are. It follows your route back one relay at
+          a time, and each relay costs it time. Reach your gateway and the
+          run is over.
+
+          Two things buy you time: more relays on the route, and a server
+          whose monitor you have masked.
+      - path: /help/logs.txt
+        size_mb: 1
+        content: |
+          Every machine on your route writes down who it passed traffic from.
+          Those lines are the only evidence that you were there. Clear them
+          on the target and on each relay and the trail ends; leave them and
+          somebody follows it at their own speed, days later.
