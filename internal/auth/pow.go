@@ -81,6 +81,10 @@ func NewPuzzle(cfg PuzzleConfig) *Puzzle {
 	}
 }
 
+// MinAge is the earliest a solution is accepted after its challenge was
+// issued. The page is told, so it can wait rather than be turned away.
+func (p *Puzzle) MinAge() time.Duration { return p.cfg.MinAge }
+
 // Issue hands out a challenge to the network key. The more challenges that
 // network asked for in the last ten minutes, the harder the new one: one bit
 // more for every five.

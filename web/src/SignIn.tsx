@@ -1,9 +1,17 @@
 // Copyright (C) 2026 White Ravens. AGPL-3.0-only with an additional term; see LICENSE and NOTICE.
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError, api, solve, type Registration } from './api';
 
 type Mode = 'login' | 'register' | 'recover';
+
+/** Puzzle is a challenge from the server, with the moment it arrived. */
+interface Puzzle {
+  id: string;
+  bits: number;
+  min_age_ms: number;
+  received: number;
+}
 
 export function SignIn({
   registration,
@@ -21,6 +29,42 @@ export function SignIn({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [codes, setCodes] = useState<string[] | null>(null);
+
+  // The puzzle is asked for as soon as the registration form is opened, not
+  // when it is sent. The server will not accept a solution that comes back
+  // within a couple of seconds of handing the puzzle out, which is the point:
+  // a person spends that time filling the form in. Asking at send time would
+  // instead measure how fast the computer solves it, and turn away the quick
+  // ones.
+  const challenge = useRef<Puzzle | null>(null);
+  useEffect(() => {
+    if (mode !== 'register' || registration === 'closed') return;
+    let dropped = false;
+    void api
+      .challenge()
+      .then((c) => {
+        if (!dropped) challenge.current = { ...c, received: Date.now() };
+      })
+      .catch(() => {
+        // The form still works: sending it asks for a puzzle then.
+      });
+    return () => {
+      dropped = true;
+    };
+  }, [mode, registration]);
+
+  /**
+   * puzzle returns a solved puzzle, asking for a fresh one when there is
+   * none, and waiting out the minimum age the server asks for.
+   */
+  async function puzzle(): Promise<{ challenge: string; solution: string }> {
+    const c = challenge.current ?? { ...(await api.challenge()), received: Date.now() };
+    challenge.current = null; // each puzzle is accepted once
+    const solution = await solve(c.id, c.bits);
+    const left = c.received + c.min_age_ms - Date.now();
+    if (left > 0) await new Promise((done) => setTimeout(done, left));
+    return { challenge: c.id, solution };
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -40,23 +84,37 @@ export function SignIn({
         onSignedIn(name);
         return;
       }
-      // Registration: work out the puzzle first, then send the form.
-      setBusy('Working out the anti-bot puzzle…');
-      const challenge = await api.challenge();
-      const solution = await solve(challenge.id, challenge.bits);
       setBusy('Creating the account…');
-      const result = await api.register({
-        username,
-        password,
-        challenge: challenge.id,
-        solution,
-        ...(invite ? { invite } : {}),
-      });
+      const result = await register();
       setCodes(result.recovery_codes);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Something went wrong.');
     } finally {
       setBusy(null);
+    }
+  }
+
+  /**
+   * register sends the form. A puzzle that expired while the form was open is
+   * replaced and the form sent again, once, rather than shown as an error the
+   * player can do nothing about.
+   */
+  async function register() {
+    const send = async () =>
+      api.register({
+        username,
+        password,
+        ...(await puzzle()),
+        ...(invite ? { invite } : {}),
+      });
+    try {
+      return await send();
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'pow') {
+        challenge.current = null;
+        return await send();
+      }
+      throw e;
     }
   }
 

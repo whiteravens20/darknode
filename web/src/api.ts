@@ -74,7 +74,10 @@ export const api = {
   session: () => request<{ username: string }>('/api/session'),
 
   challenge: () =>
-    request<{ id: string; bits: number }>('/api/auth/challenge', { method: 'POST', body: '{}' }),
+    request<{ id: string; bits: number; min_age_ms: number }>('/api/auth/challenge', {
+      method: 'POST',
+      body: '{}',
+    }),
 
   register: (body: {
     username: string;

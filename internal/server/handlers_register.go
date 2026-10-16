@@ -25,6 +25,9 @@ const (
 type challengeResponse struct {
 	ID   string `json:"id"`
 	Bits int    `json:"bits"`
+	// MinAgeMS is how long after the puzzle was handed out a solution is
+	// accepted. The page waits it out; a script that does not is turned away.
+	MinAgeMS int64 `json:"min_age_ms"`
 }
 
 func (s *Server) challenge(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +46,11 @@ func (s *Server) challenge(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal", "Something went wrong.")
 		return
 	}
-	writeJSON(w, http.StatusOK, challengeResponse{ID: c.ID, Bits: c.Bits})
+	writeJSON(w, http.StatusOK, challengeResponse{
+		ID:       c.ID,
+		Bits:     c.Bits,
+		MinAgeMS: s.Puzzle.MinAge().Milliseconds(),
+	})
 }
 
 type registerRequest struct {
