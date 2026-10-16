@@ -1,30 +1,35 @@
 ---
 name: Feature Request
-about: Suggest a new feature or improvement for DarkNode
+about: Suggest something DarkNode should do
 title: '[FEATURE] '
 labels: enhancement
 assignees: ''
 ---
 
-> Before submitting, please check [CONTRIBUTING.md](../../CONTRIBUTING.md#scope-of-contributions)
-> for what the project will and will not accept.
+> Please read [what the project takes](../../CONTRIBUTING.md#what-this-project-takes)
+> before you write it up.
 
-## Problem / Motivation
-What problem does this solve, or what use case does it enable?
+## What you are missing
+The problem, or what you want to be able to do.
 
-## Proposed Solution
-A clear and concise description of what you want to happen.
+## What you have in mind
+How it would work for the player.
 
-## Alternatives Considered
-Other approaches you have thought about and why you ruled them out.
+## What else you thought of
+Other ways of solving it, and why you prefer this one.
 
-## Security Implications
-Describe any security considerations, new attack surface, or potential abuse vectors this feature introduces.
+## What it would cost
 
-<!-- TODO for the maintainer: if the project gives a guarantee a feature could break (a privacy property, an API contract, a storage format), add a section that asks about it. -->
+- Does the server have to decide it? Everything that decides an outcome runs
+  on the server, so a feature the browser could decide on its own is not one.
+- Does it need to be remembered? Say what is stored and for how long.
+- Does it change the balance of the game? Say which numbers.
 
-## Impact on Existing Functionality
-Describe whether this change might affect existing features.
+## Does it touch anything the project promises
 
-## Additional Context
-Screenshots, mockups, or links to prior art are welcome.
+- [ ] It asks for no personal data (the game asks for no e-mail address)
+- [ ] It adds nothing the page fetches from another site
+- [ ] It needs nothing new in the image that ships
+
+## Anything else
+Links to how other games do it are welcome.

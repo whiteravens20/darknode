@@ -1,48 +1,41 @@
-## Description
-A clear and concise description of the changes made.
+## What this changes
+What the change does, and why.
 
-## Type of Change
-Please check the relevant options:
-- [ ] Bug fix (non-breaking change)
-- [ ] New feature (non-breaking change)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation update
-- [ ] Performance improvement
-- [ ] Code refactoring
-- [ ] CI, build or tooling
+## Type of change
+- [ ] Fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation
+- [ ] Build, CI or tooling
 
-## Related Issue
-Closes #(issue number)
-Relates to #(issue number)
+## Related issue
+Closes #
 
-## How Has This Been Tested?
-Describe the tests you ran to verify your changes:
-- [ ] Unit tests
-- [ ] Manual testing
+## How it was tested
+What you ran, and what you saw.
+
+- [ ] `go test ./...` passes, with a database (`DARKNODE_TEST_DATABASE_URL`)
+- [ ] `npm run typecheck` and `npm run build` pass in `web/`
+- [ ] Tried in a browser, if the change touches the page
 
 ## Checklist
-Please review the [Contributing Guidelines](../CONTRIBUTING.md) before submitting.
+See [CONTRIBUTING.md](../CONTRIBUTING.md) before you open this.
 
-- [ ] My code follows the style guidelines of this project
-- [ ] Commits follow Conventional Commits, one topic per commit
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
+- [ ] `gofmt` is clean and `go vet ./...` passes
+- [ ] New behaviour is covered by a test that fails without the change
+- [ ] Commits are Conventional Commits, one topic each, and signed
+- [ ] Documentation is updated where the change makes it wrong
 
-## Security Checklist
+## If it touches the game's rules
+- [ ] The server decides the outcome; the browser only shows it and sends commands
+- [ ] Numbers that change the balance are named here
 
-- [ ] No secrets, tokens or credentials are committed
-- [ ] No new unvalidated input or environment variable is introduced
-- [ ] The dependency audit shows no new high/critical findings
-- [ ] Lint and type checks pass with zero warnings
+## If it touches accounts or the database
+- [ ] A schema change is a new migration, never an edit to one already applied
+- [ ] No new personal data is asked for or stored
+- [ ] A secret stays out of the log, out of the page, and out of the image
 
-<!-- TODO for the maintainer: add the checks this project's own risks call for (what must never be logged, what must be validated, what must stay on the client), and name the real commands in the lines above. -->
-
-## Screenshots (if applicable)
-Add screenshots showing the changes in action.
-
-## Additional Information
-Any additional information that may be helpful during review.
+## If it touches the image or the compose file
+- [ ] The stage that ships still has no shell and no package manager
+- [ ] Base images stay pinned by version and digest
+- [ ] It still runs as a user that is not root, on a read-only filesystem

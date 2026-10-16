@@ -1,45 +1,48 @@
 ---
 name: Bug Report
-about: Report a reproducible bug in DarkNode
+about: Report something in DarkNode that does not work as it should
 title: '[BUG] '
 labels: bug
 assignees: ''
 ---
 
-> **Security vulnerability?** Do not open a public issue.
-> Use [private vulnerability reporting](../../security/advisories/new) instead.
+> **Found a security hole?** Do not open a public issue.
+> Use [private reporting](../../security/advisories/new) instead.
 
-## Bug Description
-A clear and concise description of what the bug is.
+## What happened
+What you did, and what the game did instead.
 
-## Steps to Reproduce
+## Steps to reproduce
 1.
 2.
 3.
 
-## Expected Behavior
-What you expected to happen.
+## What you expected
+What the game should have done.
 
-## Actual Behavior
-What actually happens. Include any error messages or unexpected output.
-
-## Environment
+## Where it happened
 
 | Field | Value |
 |---|---|
-| Version or commit | e.g. 1.2.3 |
-| Operating System | e.g. Ubuntu 24.04 |
-| Deployment method | e.g. Docker / direct |
+| Version | the output of `darknode version`, or the image tag |
+| How you run it | Docker Compose / the binary / built from source |
+| Browser | only for something you saw on the page |
+| Instance | your own, or somebody else's |
 
-<!-- TODO for the maintainer: replace the rows above with what this project's bugs depend on (runtime version, browser, reverse proxy, the settings that change behaviour), and add an "affected area" list if the project has distinct parts. -->
+## Which part
 
-## Logs
+- [ ] Signing up, signing in, or recovery codes
+- [ ] The terminal and its commands
+- [ ] The status bar or the connection to the server
+- [ ] The world: servers, files, programs
+- [ ] Running the server: start-up, settings, database, image
+
+## What the server said
+
 ```
-Paste relevant log fragments here (remove any sensitive values)
+Paste the relevant lines of the server's log. Take out anything private: the
+log is JSON and may hold account names.
 ```
 
-## Screenshots
-If applicable, add screenshots to help explain the problem.
-
-## Additional Context
-Anything else that may help reproduce or diagnose the issue.
+## Anything else
+Screenshots, or what you had been doing before.

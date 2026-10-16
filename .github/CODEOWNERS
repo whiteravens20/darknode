@@ -1,22 +1,35 @@
 # ── Code Owners ──────────────────────────────────────────────────────────────
-# Auto-requests review from the listed owner on any PR touching these paths, and
-# documents where the blast radius is largest.
+# Auto-requests review from the listed owner on any pull request touching
+# these paths, and says where a mistake costs most.
 #
 # Do NOT turn on "Require review from Code Owners" in branch protection on a
-# solo repo. Nobody can approve their own PR, so that setting combined with
-# enforce_admins makes every PR permanently unmergeable. The merge gate here is
-# CI (required status checks) — see /wr-standards, "Promoting a repo to v1".
+# solo repo. Nobody can approve their own pull request, so that setting
+# together with enforce_admins makes every pull request unmergeable. The merge
+# gate here is CI.
 #
-# Paths are checked most-specific to least-specific; last matching rule wins.
+# Paths are checked most-specific to least-specific; the last match wins.
 
-# ── CI/CD & supply chain ──────────────────────────────────────────────────────
-# Any change to workflow files or Dependabot config is high-risk supply-chain.
+# Anything that changes how a build runs or what it pulls in.
 /.github/ @pavlojs
+/Dockerfile @pavlojs
+/docker-compose.yml @pavlojs
+/go.mod @pavlojs
+/go.sum @pavlojs
+/web/package.json @pavlojs
+/web/package-lock.json @pavlojs
 
-# ── Security & legal docs ─────────────────────────────────────────────────────
-/SECURITY.md @pavlojs
+# Who gets in, and as whom. A mistake here is an account somebody else's.
+/internal/auth/ @pavlojs
+/internal/server/session.go @pavlojs
+/internal/server/handlers_register.go @pavlojs
+/internal/server/handlers_login.go @pavlojs
+
+# The shape of the stored data, and every change to it. A migration that is
+# wrong is wrong in everyone's database at once.
+/internal/store/ @pavlojs
+
+# Legal notices and licence.
 /LICENSE @pavlojs
-
-# TODO for the maintainer: list the paths where a mistake costs most in this
-# project (authentication, cryptography, storage, container config), each with
-# a line saying why.
+/NOTICE @pavlojs
+/SECURITY.md @pavlojs
+/internal/legal/ @pavlojs

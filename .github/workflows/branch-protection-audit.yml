@@ -104,7 +104,7 @@ jobs:
           # >>> v1. Confirm the real names with:
           # >>>   gh api repos/OWNER/REPO/commits/dev/check-runs \
           # >>>     --jq '.check_runs[].name'
-          MUST_HAVE=("test" "Analyze (javascript-typescript)" "npm audit" "Trivy filesystem scan")
+          MUST_HAVE=("Server" "Client" "Image" "Analyze (go)" "Go vulnerabilities" "Staticcheck" "Trivy filesystem scan")
 
           REQUIRED_CHECKS=$(echo "$PROT" | jq -r '.required_status_checks.contexts[]? // empty' | sort)
           if [ -z "$REQUIRED_CHECKS" ]; then

@@ -1,0 +1,127 @@
+name: Test
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: Server
+    runs-on: ubuntu-latest
+
+    # The database tests run against a real PostgreSQL, because what they
+    # check is the schema and its constraints. DARKNODE_TEST_REQUIRE_DB makes
+    # a missing database fail the run instead of quietly skipping the tests.
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    env:
+      DARKNODE_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable
+      DARKNODE_TEST_REQUIRE_DB: '1'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          check-latest: false
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l . | grep -v '^tools/' || true)
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Check the module files are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test -race -count=1 ./...
+
+  client:
+    name: Client
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  image:
+    name: Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build the image
+        run: docker build -t darknode:ci .
+
+      # What ships must hold no shell and no package manager: a flaw in the
+      # game then has nothing to run. This fails if one ever appears.
+      - name: Check the image has no shell or package manager
+        run: |
+          for tool in sh bash ash dash busybox apk apt npm node; do
+            if docker run --rm --entrypoint "$tool" darknode:ci --version >/dev/null 2>&1; then
+              echo "::error::$tool can be run inside the image"
+              exit 1
+            fi
+          done
+          echo "no shell and no package manager in the image"
+
+      - name: Check it does not run as root
+        run: |
+          user=$(docker image inspect darknode:ci --format '{{.Config.User}}')
+          case "$user" in
+            ''|root|0|0:0) echo "::error::the image runs as $user"; exit 1 ;;
+            *) echo "the image runs as $user" ;;
+          esac
+
+      - name: Check the binary answers
+        run: docker run --rm darknode:ci version
