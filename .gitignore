@@ -1,10 +1,19 @@
+# Build output
+/dist/
+/darknode
+/web/dist/
+/web/node_modules/
+
+# Go
+*.test
+*.out
+/coverage.*
+
+# Local environment
 .env
 .env.*
 !.env.example
-node_modules/
-dist/
-build/
-coverage/
+
+# Editors and systems
 .DS_Store
 *.log
-.cache/
