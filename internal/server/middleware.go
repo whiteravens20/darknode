@@ -71,12 +71,32 @@ func (s *Server) recoverPanics(next http.Handler) http.Handler {
 				if v == http.ErrAbortHandler {
 					panic(v) // the server's own signal to drop the connection
 				}
-				s.Logger.Error("handler panic", "method", r.Method, "path", r.URL.Path, "panic", v)
+				s.Logger.Error("handler panic",
+					"method", forLog(r.Method), "path", forLog(r.URL.Path), "panic", v)
 				writeError(w, http.StatusInternalServerError, "internal", "Something went wrong.")
 			}
 		}()
 		next.ServeHTTP(w, r)
 	})
+}
+
+// maxLoggedLength is how much of a value taken from a request is written to
+// the log.
+const maxLoggedLength = 120
+
+// forLog makes a value from a request safe to write to the log: control
+// characters become dots, so nothing can forge a line however the log is
+// formatted, and the length is capped, so a long request cannot flood it.
+func forLog(s string) string {
+	if len(s) > maxLoggedLength {
+		s = s[:maxLoggedLength] + "…"
+	}
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return '.'
+		}
+		return r
+	}, s)
 }
 
 // maxBodyBytes is the largest request body the API reads.
