@@ -46,6 +46,8 @@ func run(ctx context.Context, args []string, getenv func(string) string) error {
 		return invite(ctx, args, getenv)
 	case "recovery-reset":
 		return recoveryReset(ctx, args, getenv)
+	case "healthcheck":
+		return healthcheck(ctx, getenv)
 	case "version":
 		fmt.Println("darknode " + version)
 		return nil
@@ -68,6 +70,7 @@ Usage:
   darknode migrate              bring the database up to date and exit
   darknode invite [-n COUNT]    make invite codes and print them
   darknode recovery-reset NAME  give an account new recovery codes
+  darknode healthcheck          ask the running server whether it is well
   darknode version              print the version
 
 Settings come from the environment; see the README.

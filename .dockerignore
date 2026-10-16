@@ -1,0 +1,15 @@
+# Everything the build does not need, so the context stays small and no local
+# secret or build output can slip into an image.
+.git
+.github
+**/node_modules
+**/dist
+/darknode
+*.md
+!LICENSE
+!NOTICE
+.env
+.env.*
+!.env.example
+docker-compose*.yml
+tools

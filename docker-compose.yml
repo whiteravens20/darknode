@@ -1,0 +1,108 @@
+# Copyright (C) 2026 White Ravens. AGPL-3.0-only with an additional term; see LICENSE and NOTICE.
+#
+# Run a DarkNode instance. Copy .env.example to .env, put real secrets in it,
+# then:
+#
+#   docker compose up -d
+#
+# The game is then on http://localhost:8080. Put it behind a reverse proxy
+# that terminates TLS before letting anyone else reach it, and leave
+# DARKNODE_COOKIE_SECURE at its default of true when you do.
+
+name: darknode
+
+services:
+  db:
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: darknode
+      POSTGRES_USER: darknode
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      # Postgres 18 keeps its data under a version directory, so the volume
+      # goes here and not at .../data as it did before.
+      - db-data:/var/lib/postgresql
+    # The database is reached only by the game, over the private network of
+    # this file. It publishes no port.
+    networks:
+      - internal
+    # The image starts as root to set its data directory up, then drops to
+    # this user; starting as it directly needs the directory to exist already,
+    # which the named volume gives us after the first run.
+    user: "70:70"
+    tmpfs:
+      - /tmp:mode=1777,size=64m,noexec,nosuid,nodev
+      # Owned by the postgres user of the image, which is uid 70 on Alpine:
+      # the server puts its socket here and a root-owned tmpfs would stop it.
+      - /run/postgresql:mode=0700,uid=70,gid=70,size=16m,noexec,nosuid,nodev
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U darknode -d darknode"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  game:
+    image: ghcr.io/whiteravens20/darknode:${DARKNODE_VERSION:-main}
+    # Build it yourself instead of pulling with:  docker compose build
+    build:
+      context: .
+      args:
+        VERSION: ${DARKNODE_VERSION:-dev}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DARKNODE_DATABASE_URL: postgres://darknode@db:5432/darknode?sslmode=disable
+      DARKNODE_DATABASE_PASSWORD_FILE: /run/secrets/db_password
+      DARKNODE_SECRET_FILE: /run/secrets/server_secret
+      DARKNODE_LISTEN: ":8080"
+      # open, invite or closed.
+      DARKNODE_REGISTRATION: ${DARKNODE_REGISTRATION:-open}
+      # Leave this true wherever the browser reaches the game over HTTPS. Set
+      # it to false only for a local instance served over plain HTTP.
+      DARKNODE_COOKIE_SECURE: ${DARKNODE_COOKIE_SECURE:-true}
+      # The networks of the proxies whose X-Forwarded-For header is believed.
+      # Leave it empty when nothing sits in front of the game.
+      DARKNODE_TRUSTED_PROXIES: ${DARKNODE_TRUSTED_PROXIES:-}
+      DARKNODE_LOG_LEVEL: ${DARKNODE_LOG_LEVEL:-info}
+    secrets:
+      - db_password
+      - server_secret
+    ports:
+      # Published on the loopback address only: put a reverse proxy in front.
+      - "127.0.0.1:${DARKNODE_PORT:-8080}:8080"
+    networks:
+      - internal
+    # The game writes nothing to disk: its state is in the database.
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 200
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  db-data:
+
+# Compose mounts a secret file with the ownership and mode it has on the host
+# and ignores `uid`, `gid` and `mode` here, so the files have to be readable
+# by the users inside the containers. The directory that holds them is what
+# keeps them private on the host: see secrets/README.md.
+secrets:
+  db_password:
+    file: ./secrets/db_password
+  server_secret:
+    file: ./secrets/server_secret

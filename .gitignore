@@ -17,3 +17,7 @@
 # Editors and systems
 .DS_Store
 *.log
+
+# Secrets of a local instance; only the explanation is tracked.
+/secrets/*
+!/secrets/README.md
