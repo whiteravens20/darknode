@@ -138,6 +138,20 @@ whom — `internal/auth/` and the session, registration and sign-in handlers in
 If something looks wrong, open an issue. For a vulnerability, follow
 [SECURITY.md](SECURITY.md).
 
+## Trademarks and other games
+
+*Uplink* is a trademark of Introversion Software. *Hacker Evolution* is a
+trademark of exosyphen studios. DarkNode is not affiliated with, endorsed by
+or connected to either of them, nor to anyone else named on this page.
+
+Those games are mentioned to say what kind of game this is and nothing more.
+DarkNode shares no code, assets, text or data with them: it was written from
+nothing, and everything in it is the work of this project's contributors
+under the licence below. Every organisation, person, machine and address in
+the game is invented; any resemblance to a real one is accidental, and the
+addresses are taken only from ranges reserved for documentation and private
+networks, so none of them belongs to anybody.
+
 ## License
 
 [GNU Affero General Public License, version 3](LICENSE) (AGPL-3.0-only), with
