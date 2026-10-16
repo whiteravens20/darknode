@@ -1,0 +1,21 @@
+/* Copyright (C) 2026 White Ravens. AGPL-3.0-only with an additional term; see LICENSE and NOTICE. */
+@import 'tailwindcss';
+
+/* The fonts are the reader's own: nothing is fetched from another site. */
+@theme {
+  --font-mono:
+    ui-monospace, 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0a0a0a;
+  color: #e5e5e5;
+  font-family: var(--font-mono);
+}
