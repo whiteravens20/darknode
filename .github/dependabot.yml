@@ -99,6 +99,12 @@ updates:
         update-types:
           - minor
           - patch
+    # typescript-eslint reads the compiler's API, which TypeScript 7 no longer
+    # ships, and supports TypeScript below 6.1 only. TypeScript 7 comes back
+    # together with a typescript-eslint release that supports it.
+    ignore:
+      - dependency-name: typescript
+        versions: ['>=7.0.0']
 
   # ── The base images ──────────────────────────────────────────────────────────
   # The Dockerfile pins each image by version and digest. A new minor or patch
