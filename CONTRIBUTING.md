@@ -62,17 +62,17 @@ it does in production.
 
 ## Where things are
 
-| Path | What is in it |
-|---|---|
-| `cmd/darknode/` | The command: serving, migrating, invites, recovery codes |
-| `internal/config/` | Settings, read from the environment |
-| `internal/store/` | PostgreSQL: the schema, its migrations and the queries |
-| `internal/auth/` | Password hashing, the sign-up puzzle, rate limits, codes |
-| `internal/game/` | The game itself: the clock, runs, the terminal's commands |
-| `internal/server/` | HTTP: the API, sessions, the state stream |
-| `internal/world/` | The world catalogue and the loader that checks it |
-| `data/world/` | The world itself, as data files |
-| `web/` | The browser client |
+| Path               | What is in it                                             |
+| ------------------ | --------------------------------------------------------- |
+| `cmd/darknode/`    | The command: serving, migrating, invites, recovery codes  |
+| `internal/config/` | Settings, read from the environment                       |
+| `internal/store/`  | PostgreSQL: the schema, its migrations and the queries    |
+| `internal/auth/`   | Password hashing, the sign-up puzzle, rate limits, codes  |
+| `internal/game/`   | The game itself: the clock, runs, the terminal's commands |
+| `internal/server/` | HTTP: the API, sessions, the state stream                 |
+| `internal/world/`  | The world catalogue and the loader that checks it         |
+| `data/world/`      | The world itself, as data files                           |
+| `web/`             | The browser client                                        |
 
 ## How to write it
 

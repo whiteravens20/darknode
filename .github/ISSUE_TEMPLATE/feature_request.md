@@ -10,12 +10,15 @@ assignees: ''
 > before you write it up.
 
 ## What you are missing
+
 The problem, or what you want to be able to do.
 
 ## What you have in mind
+
 How it would work for the player.
 
 ## What else you thought of
+
 Other ways of solving it, and why you prefer this one.
 
 ## What it would cost
@@ -32,4 +35,5 @@ Other ways of solving it, and why you prefer this one.
 - [ ] It needs nothing new in the image that ships
 
 ## Anything else
+
 Links to how other games do it are welcome.

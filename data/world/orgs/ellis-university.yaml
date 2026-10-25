@@ -20,7 +20,7 @@ servers:
       - path: /academic/records.db
         size_mb: 10
         sensitive: true
-        content: "Student records: enrolment, marks and awards."
+        content: 'Student records: enrolment, marks and awards.'
       - path: /papers/trace-timing.pdf
         size_mb: 5
         content: |

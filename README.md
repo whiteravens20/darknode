@@ -7,7 +7,7 @@
 [![CodeQL](https://github.com/whiteravens20/darknode/actions/workflows/codeql.yml/badge.svg)](https://github.com/whiteravens20/darknode/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/whiteravens20/darknode/badge)](https://scorecard.dev/viewer/?uri=github.com/whiteravens20/darknode)
 
-DarkNode is a game in the line of *Uplink* and *Hacker Evolution*. You are an
+DarkNode is a game in the line of _Uplink_ and _Hacker Evolution_. You are an
 agent with one computer and a list of addresses. You take contracts, break
 into the machines of invented organisations, take or destroy what you were
 paid to, clear your traces, and get out before anyone works out where you are.
@@ -104,7 +104,7 @@ counts as one, and the controls the project keeps.
 
 ## Trademarks and other games
 
-*Uplink* is a trademark of Introversion Software. *Hacker Evolution* is a
+_Uplink_ is a trademark of Introversion Software. _Hacker Evolution_ is a
 trademark of exosyphen studios. DarkNode is not affiliated with, endorsed by
 or connected to either of them, nor to anyone else named on this page.
 

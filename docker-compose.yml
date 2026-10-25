@@ -32,7 +32,7 @@ services:
     # The image starts as root to set its data directory up, then drops to
     # this user; starting as it directly needs the directory to exist already,
     # which the named volume gives us after the first run.
-    user: "70:70"
+    user: '70:70'
     tmpfs:
       - /tmp:mode=1777,size=64m,noexec,nosuid,nodev
       # Owned by the postgres user of the image, which is uid 70 on Alpine:
@@ -43,7 +43,7 @@ services:
     cap_drop:
       - ALL
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U darknode -d darknode"]
+      test: ['CMD-SHELL', 'pg_isready -U darknode -d darknode']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -64,7 +64,7 @@ services:
       DARKNODE_DATABASE_URL: postgres://darknode@db:5432/darknode?sslmode=disable
       DARKNODE_DATABASE_PASSWORD_FILE: /run/secrets/db_password
       DARKNODE_SECRET_FILE: /run/secrets/server_secret
-      DARKNODE_LISTEN: ":8080"
+      DARKNODE_LISTEN: ':8080'
       # open, invite or closed.
       DARKNODE_REGISTRATION: ${DARKNODE_REGISTRATION:-open}
       # Leave this true wherever the browser reaches the game over HTTPS. Set
@@ -79,7 +79,7 @@ services:
       - server_secret
     ports:
       # Published on the loopback address only: put a reverse proxy in front.
-      - "127.0.0.1:${DARKNODE_PORT:-8080}:8080"
+      - '127.0.0.1:${DARKNODE_PORT:-8080}:8080'
     networks:
       - internal
     # The game writes nothing to disk: its state is in the database.

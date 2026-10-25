@@ -10,24 +10,27 @@ assignees: ''
 > Use [private reporting](../../security/advisories/new) instead.
 
 ## What happened
+
 What you did, and what the game did instead.
 
 ## Steps to reproduce
+
 1.
 2.
 3.
 
 ## What you expected
+
 What the game should have done.
 
 ## Where it happened
 
-| Field | Value |
-|---|---|
-| Version | the output of `darknode version`, or the image tag |
-| How you run it | Docker Compose / the binary / built from source |
-| Browser | only for something you saw on the page |
-| Instance | your own, or somebody else's |
+| Field          | Value                                              |
+| -------------- | -------------------------------------------------- |
+| Version        | the output of `darknode version`, or the image tag |
+| How you run it | Docker Compose / the binary / built from source    |
+| Browser        | only for something you saw on the page             |
+| Instance       | your own, or somebody else's                       |
 
 ## Which part
 
@@ -45,4 +48,5 @@ log is JSON and may hold account names.
 ```
 
 ## Anything else
+
 Screenshots, or what you had been doing before.
