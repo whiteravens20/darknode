@@ -79,7 +79,8 @@ it does in production.
 - One logical change per pull request, and no unrelated edits carried along.
 - No dead code and no commented-out blocks.
 - Go code is `gofmt`-formatted and passes `go vet ./...` and staticcheck.
-- Client code is formatted with Prettier and type-checks with no errors.
+- Client code is formatted with Prettier, passes ESLint, and type-checks with
+  no errors.
 - A new dependency needs its reason in the pull request. Both lockfiles are
   committed.
 
@@ -92,7 +93,7 @@ happens to do today, and never relax one to make a red run green.
 ```bash
 export DARKNODE_TEST_DATABASE_URL="postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable"
 go test ./...
-cd web && npm run typecheck && npm run build
+cd web && npm run lint && npm run typecheck && npm run build
 ```
 
 The tests that need a database make one of their own and drop it afterwards.

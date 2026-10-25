@@ -114,7 +114,8 @@ Every change to `main` and `dev` goes through
 server is checked for formatting
 and tidy module files, vetted, built, and its tests run with the race detector
 against a real PostgreSQL, so the tests that are about the schema really meet
-one; the client is checked for formatting, type-checked and built; the image
+one; the client is checked for formatting, linted with ESLint, type-checked
+and built; the image
 is built and then checked to hold no shell and no package manager and not to
 run as root. [security.yml](.github/workflows/security.yml) runs govulncheck
 and staticcheck on the server, `npm audit` and a signature check on the

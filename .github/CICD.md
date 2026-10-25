@@ -4,7 +4,7 @@
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `test.yml` | push and pull request on `main` and `dev` | Server: formatting, tidy module files, vet, build, and the tests with the race detector against a real PostgreSQL. Client: formatting, type check, build. Image: builds it and checks it holds no shell or package manager and does not run as root. |
+| `test.yml` | push and pull request on `main` and `dev` | Server: formatting, tidy module files, vet, build, and the tests with the race detector against a real PostgreSQL. Client: formatting, lint (ESLint), type check, build. Image: builds it and checks it holds no shell or package manager and does not run as root. |
 | `security.yml` | push and pull request on `main` and `dev`; weekly | govulncheck and staticcheck on the server, npm audit and signature checks on the client, dependency review on pull requests, Trivy over the tree and over the image, and the two checks of the pinned actions. |
 | `codeql.yml` | push and pull request on `main` and `dev`; weekly | CodeQL over the Go and the TypeScript code. |
 | `scorecard.yml` | push to the default branch; weekly | OpenSSF Scorecard, published for the badge in the README. |
