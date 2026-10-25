@@ -109,8 +109,9 @@ independent security review.
 
 **What a change goes through**
 
-Every push and pull request on `main` and `dev` runs
-[test.yml](.github/workflows/test.yml): the server is checked for formatting
+Every change to `main` and `dev` goes through
+[test.yml](.github/workflows/test.yml), on its pull request or its push: the
+server is checked for formatting
 and tidy module files, vetted, built, and its tests run with the race detector
 against a real PostgreSQL, so the tests that are about the schema really meet
 one; the client is checked for formatting, type-checked and built; the image
@@ -120,8 +121,8 @@ and staticcheck on the server, `npm audit` and a signature check on the
 client's packages, Trivy over the tree and over the image, and two checks that
 every action is pinned to the commit of the version named beside it.
 [codeql.yml](.github/workflows/codeql.yml) analyses the Go and the TypeScript.
-All of it runs again weekly, so a vulnerability published after a change still
-surfaces. Commits are signed.
+security.yml and codeql.yml also run weekly, so a vulnerability published after
+a change still surfaces. Commits are signed.
 
 **What the maintainer decided and read**
 
