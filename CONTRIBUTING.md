@@ -79,9 +79,10 @@ it does in production.
 - One logical change per pull request, and no unrelated edits carried along.
 - No dead code and no commented-out blocks.
 - Go code is `gofmt`-formatted and passes `go vet ./...` and staticcheck.
-- Client code is formatted with Prettier, passes ESLint, and type-checks with
-  no errors.
-- A new dependency needs its reason in the pull request. Both lockfiles are
+- Every file Prettier reads is formatted with the one config at the root:
+  run `npm ci --ignore-scripts && npm run format` there.
+- Client code passes ESLint and type-checks with no errors.
+- A new dependency needs its reason in the pull request. Every lockfile is
   committed.
 
 ### Tests
@@ -93,6 +94,7 @@ happens to do today, and never relax one to make a red run green.
 ```bash
 export DARKNODE_TEST_DATABASE_URL="postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable"
 go test ./...
+npm ci --ignore-scripts && npm run format:check
 cd web && npm run lint && npm run typecheck && npm run build
 ```
 

@@ -1,6 +1,7 @@
 # ── Dependabot configuration ──────────────────────────────────────────────────
-# Keeps GitHub Actions, the Go modules, the client's npm packages and the
-# Docker base images up to date. Pull requests open against `dev`.
+# Keeps GitHub Actions, the Go modules, the client's npm packages, the
+# formatter and the Docker base images up to date. Pull requests open against
+# `dev`.
 #
 # Supply-chain quarantine: every ecosystem sets `cooldown: 7`, so a version is
 # never proposed until it has been public for a week. That is the enforcement
@@ -105,6 +106,28 @@ updates:
     ignore:
       - dependency-name: typescript
         versions: ['>=7.0.0']
+
+  # ── The formatter ────────────────────────────────────────────────────────────
+  # Prettier at the root formats every file it reads, the client included.
+  - package-ecosystem: npm
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: monthly
+      time: '08:00'
+      timezone: UTC
+    labels:
+      - dependencies
+      - tooling
+    commit-message:
+      prefix: chore(tools)
+    cooldown:
+      default-days: 7
+    groups:
+      formatter-non-breaking:
+        update-types:
+          - minor
+          - patch
 
   # ── The base images ──────────────────────────────────────────────────────────
   # The Dockerfile pins each image by version and digest. A new minor or patch

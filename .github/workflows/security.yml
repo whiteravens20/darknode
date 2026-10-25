@@ -72,7 +72,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
 
       # What ships to a browser gets the tighter bar; the build-only packages
       # stay at high to keep the noise down.
@@ -82,12 +84,26 @@ jobs:
       - name: Audit the build packages
         run: npm audit --audit-level=high
 
+      # The formatter at the root ships nothing and runs in CI, so it is held
+      # to the bar of the build packages.
+      - name: Audit the formatter
+        working-directory: .
+        run: npm audit --audit-level=high
+
       - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Install the formatter
+        working-directory: .
         run: npm ci --ignore-scripts
 
       # Checks every installed tarball against its registry signature, which
       # catches a forged tarball or tampered registry data.
       - name: Verify the signatures
+        run: npm audit signatures
+
+      - name: Verify the formatter's signatures
+        working-directory: .
         run: npm audit signatures
 
   dependency-review:

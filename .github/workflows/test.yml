@@ -79,13 +79,20 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      # One Prettier config at the root covers every file it reads: the
+      # client, the docs, the workflows and the world's data.
+      - name: Check formatting
+        working-directory: .
+        run: |
+          npm ci --ignore-scripts
+          npm run format:check
 
       - name: Install
         run: npm ci --ignore-scripts
-
-      - name: Check formatting
-        run: npm run format:check
 
       - name: Lint
         run: npm run lint

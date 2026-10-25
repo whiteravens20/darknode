@@ -133,12 +133,14 @@ Every change to `main` and `dev` goes through
 server is checked for formatting
 and tidy module files, vetted, built, and its tests run with the race detector
 against a real PostgreSQL, so the tests that are about the schema really meet
-one; the client is checked for formatting, linted with ESLint, type-checked
-and built; the image
+one; every file Prettier reads, the docs and the workflows included, is
+checked against one formatting config; the client is linted with ESLint,
+type-checked and built; the image
 is built and then checked to hold no shell and no package manager and not to
 run as root. [security.yml](.github/workflows/security.yml) runs govulncheck
 and staticcheck on the server, `npm audit` and a signature check on the
-client's packages, Trivy over the tree and over the image, and two checks that
+client's packages and the formatter, Trivy over the tree and over the image,
+and two checks that
 every action is pinned to the commit of the version named beside it.
 [codeql.yml](.github/workflows/codeql.yml) analyses the Go and the TypeScript.
 security.yml and codeql.yml also run weekly, so a vulnerability published after
