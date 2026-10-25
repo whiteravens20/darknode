@@ -97,14 +97,10 @@ jobs:
           # check names GitHub actually reports, not the workflow job ids — a
           # matrix job reports its name with the matrix value appended, so a
           # name no job ever produces can never be satisfied and blocks every
-          # merge.
-          #
-          # >>> SCAFFOLD: replace MUST_HAVE with the check names THIS repo
-          # >>> actually reports, then promote the warning below to an error at
-          # >>> v1. Confirm the real names with:
-          # >>>   gh api repos/OWNER/REPO/commits/dev/check-runs \
-          # >>>     --jq '.check_runs[].name'
-          MUST_HAVE=("Server" "Client" "Image" "Analyze (go)" "Go vulnerabilities" "Staticcheck" "Trivy filesystem scan")
+          # merge. A missing one is a warning until v1, and an error from then
+          # on. The names a commit really reports:
+          #   gh api repos/OWNER/REPO/commits/dev/check-runs --jq '.check_runs[].name'
+          MUST_HAVE=("Server" "Client" "Image" "Analyze (go)" "Analyze (javascript-typescript)" "Go vulnerabilities" "Client dependencies" "Staticcheck" "Trivy filesystem scan")
 
           REQUIRED_CHECKS=$(echo "$PROT" | jq -r '.required_status_checks.contexts[]? // empty' | sort)
           if [ -z "$REQUIRED_CHECKS" ]; then
