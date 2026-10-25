@@ -18,7 +18,7 @@ somebody else runs.
 > built. What works today is the account, the gateway, a run, and the terminal
 > that shows them. There is no release yet.
 
-## What is there
+## Features
 
 - **A terminal as the whole interface.** Every action has a command; the
   panels that come later will be shortcuts for the same ones.
@@ -33,7 +33,7 @@ somebody else runs.
 - **Nothing fetched from anywhere else.** No fonts, no scripts, no analytics.
   An instance works with no outbound traffic at all.
 
-## Run your own
+## Install
 
 You need Docker with the Compose plugin.
 
@@ -48,6 +48,14 @@ openssl rand -base64 48 > secrets/server_secret
 chmod 700 secrets && chmod 444 secrets/db_password secrets/server_secret
 
 cp .env.example .env     # read it: the port, who may register, HTTPS
+```
+
+The settings are listed in [.env.example](.env.example), and what to watch out
+for when hosting is in [SECURITY.md](SECURITY.md#for-whoever-runs-an-instance).
+
+## Run
+
+```bash
 docker compose up -d
 ```
 
@@ -61,9 +69,6 @@ codes:
 ```bash
 docker compose exec game /darknode invite -n 5
 ```
-
-The settings are listed in [.env.example](.env.example), and what to watch out
-for when hosting is in [SECURITY.md](SECURITY.md#for-whoever-runs-an-instance).
 
 ## Play
 
@@ -96,6 +101,20 @@ code.
 
 See [SECURITY.md](SECURITY.md) for how to report a problem privately, what
 counts as one, and the controls the project keeps.
+
+## Trademarks and other games
+
+*Uplink* is a trademark of Introversion Software. *Hacker Evolution* is a
+trademark of exosyphen studios. DarkNode is not affiliated with, endorsed by
+or connected to either of them, nor to anyone else named on this page.
+
+Those games are mentioned to say what kind of game this is and nothing more.
+DarkNode shares no code, assets, text or data with them: it was written from
+nothing, and everything in it is the work of this project's contributors
+under the licence below. Every organisation, person, machine and address in
+the game is invented; any resemblance to a real one is accidental, and the
+addresses are taken only from ranges reserved for documentation and private
+networks, so none of them belongs to anybody.
 
 ## How the code is written and checked
 
@@ -139,20 +158,6 @@ whom — `internal/auth/` and the session, registration and sign-in handlers in
 
 If something looks wrong, open an issue. For a vulnerability, follow
 [SECURITY.md](SECURITY.md).
-
-## Trademarks and other games
-
-*Uplink* is a trademark of Introversion Software. *Hacker Evolution* is a
-trademark of exosyphen studios. DarkNode is not affiliated with, endorsed by
-or connected to either of them, nor to anyone else named on this page.
-
-Those games are mentioned to say what kind of game this is and nothing more.
-DarkNode shares no code, assets, text or data with them: it was written from
-nothing, and everything in it is the work of this project's contributors
-under the licence below. Every organisation, person, machine and address in
-the game is invented; any resemblance to a real one is accidental, and the
-addresses are taken only from ranges reserved for documentation and private
-networks, so none of them belongs to anybody.
 
 ## License
 
