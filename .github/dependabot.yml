@@ -7,6 +7,11 @@
 # never proposed until it has been public for a week. That is the enforcement
 # point of the policy — a version too fresh never becomes a pull request, so
 # it cannot be merged early. Security updates are exempt and land at once.
+#
+# No pull request is rebased by itself (`rebase-strategy: disabled`) while the
+# repo is in development: a push to `dev` would otherwise rebase every open one
+# and run its checks again. One is rebased when it is next to be merged, with a
+# `@dependabot rebase` comment.
 
 version: 2
 
@@ -15,6 +20,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     target-branch: dev
+    rebase-strategy: disabled
     schedule:
       interval: monthly
       time: '08:00'
@@ -40,6 +46,7 @@ updates:
   - package-ecosystem: gomod
     directory: /
     target-branch: dev
+    rebase-strategy: disabled
     schedule:
       interval: weekly
       day: monday
@@ -62,6 +69,7 @@ updates:
   - package-ecosystem: gomod
     directory: /tools
     target-branch: dev
+    rebase-strategy: disabled
     schedule:
       interval: monthly
       time: '08:00'
@@ -83,6 +91,7 @@ updates:
   - package-ecosystem: npm
     directory: /web
     target-branch: dev
+    rebase-strategy: disabled
     schedule:
       interval: weekly
       day: monday
@@ -112,6 +121,7 @@ updates:
   - package-ecosystem: npm
     directory: /
     target-branch: dev
+    rebase-strategy: disabled
     schedule:
       interval: monthly
       time: '08:00'
@@ -136,6 +146,7 @@ updates:
   - package-ecosystem: docker
     directory: /
     target-branch: dev
+    rebase-strategy: disabled
     schedule:
       interval: weekly
       day: monday
