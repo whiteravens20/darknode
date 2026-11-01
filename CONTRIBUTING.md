@@ -131,7 +131,7 @@ Commits must be signed.
 
 ### AI-assisted code
 
-Most of this project is written with AI coding tools, as the
+This project is built using AI coding tools, as the
 [README](README.md#how-the-code-is-written-and-checked) says, and your
 contribution may be too. Do not send output you cannot explain and defend in
 review: read it, test it, and take responsibility for it.
