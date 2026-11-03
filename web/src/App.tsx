@@ -75,6 +75,13 @@ function StatusBar({
           <span title="Connection" className="text-amber-300">
             {connectionText(run.connection)}
           </span>
+          {run.connection && run.connection.tools.length > 0 && (
+            <span title="Running programs" className="text-neutral-400">
+              {run.connection.tools
+                .map((tool) => `${tool.name} ${Math.round(tool.progress * 100)}%`)
+                .join(' · ')}
+            </span>
+          )}
         </>
       ) : (
         <span className="text-neutral-500">no run &mdash; type `run new`</span>

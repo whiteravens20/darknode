@@ -51,12 +51,31 @@ export interface ServerRef {
   name: string;
 }
 
+/** Layer is one of a server's defences, and whether it has been opened. */
+export interface Layer {
+  name: string;
+  open: boolean;
+}
+
+/** Tool is a program at work on the connection. */
+export interface Tool {
+  id: string;
+  name: string;
+  version: number;
+  /** How far it has got, from 0 to 1. */
+  progress: number;
+  /** How long it has left at the share of the processor it is getting now. */
+  left_seconds: number;
+}
+
 /** Connection is the live connection, as the server reports it. */
 export interface Connection {
   target: ServerRef;
   route: ServerRef[];
   state: 'CONNECTING' | 'CONNECTED';
   root: boolean;
+  layers: Layer[];
+  tools: Tool[];
 }
 
 export interface RunState {
