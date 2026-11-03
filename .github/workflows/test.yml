@@ -103,6 +103,79 @@ jobs:
       - name: Build
         run: npm run build
 
+  e2e:
+    name: End to end
+    runs-on: ubuntu-latest
+
+    # The browser test drives a whole instance — this server, this database,
+    # this client, in a real browser — and walks the path a new player walks.
+    # It is the only check that can see the three disagree: the client calling
+    # an endpoint the server does not have type-checks, lints and passes every
+    # test on either side of it.
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    env:
+      DARKNODE_E2E_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            e2e/package-lock.json
+
+      # The server serves the built client, as it does in the image, so the
+      # test meets the files a player would get.
+      - name: Build the client
+        working-directory: web
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+
+      - name: Install the test's packages
+        working-directory: e2e
+        run: npm ci --ignore-scripts
+
+      - name: Install the browser
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      # The configuration starts the server itself and waits for its health
+      # check before the first page is opened.
+      - name: Walk the player's path in a browser
+        working-directory: e2e
+        run: npm test
+
+      # The report carries the trace and the screenshot of the moment it
+      # failed, which is the only way to see afterwards what the browser saw.
+      - name: Keep the report of a failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 7
+
   image:
     name: Image
     runs-on: ubuntu-latest
