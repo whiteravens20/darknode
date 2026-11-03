@@ -16,6 +16,11 @@ const (
 	// DeltaConnection is where the player is connected, and how far the
 	// connection has got.
 	DeltaConnection = "connection"
+	// DeltaTrace is how far the trace has come down the route.
+	DeltaTrace = "trace"
+	// DeltaAlert is something that happened without the player asking: an
+	// administrator closing a layer, a connection cut.
+	DeltaAlert = "alert"
 	// DeltaWorld is the shared clock, sent to everyone as it moves.
 	DeltaWorld = "world"
 	// DeltaResync tells a browser to open the stream again, because the
@@ -66,6 +71,27 @@ type ConnectionDelta struct {
 
 // WithSeq returns a copy of the delta numbered seq.
 func (d ConnectionDelta) WithSeq(seq uint64) Delta { d.Seq = seq; return d }
+
+// TraceDelta is the live trace, or null once none runs.
+type TraceDelta struct {
+	Seq   uint64     `json:"seq"`
+	Trace *TraceView `json:"trace"`
+}
+
+// WithSeq returns a copy of the delta numbered seq.
+func (d TraceDelta) WithSeq(seq uint64) Delta { d.Seq = seq; return d }
+
+// AlertDelta is a line the game says to the player of its own accord.
+type AlertDelta struct {
+	Seq  uint64 `json:"seq"`
+	Text string `json:"text"`
+	// Kind colours the line in the terminal, as a command's output is
+	// coloured.
+	Kind string `json:"kind,omitempty"`
+}
+
+// WithSeq returns a copy of the delta numbered seq.
+func (d AlertDelta) WithSeq(seq uint64) Delta { d.Seq = seq; return d }
 
 // ResyncDelta asks a browser to open the stream again.
 type ResyncDelta struct {

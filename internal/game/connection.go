@@ -170,9 +170,17 @@ func (e *Engine) Disconnect(account int64) (*Connection, error) {
 	}
 	conn := r.conn
 	r.conn = nil
+	// Leaving of your own accord is what a trace is raced against: the live
+	// one ends with the connection. What the logs left behind is another
+	// matter, and a slower one.
+	traced := r.trace != nil
+	r.trace = nil
 	e.mu.Unlock()
 
 	e.out.Publish(account, DeltaConnection, ConnectionDelta{Connection: nil})
+	if traced {
+		e.out.Publish(account, DeltaTrace, TraceDelta{Trace: nil})
+	}
 	return conn, nil
 }
 

@@ -155,16 +155,25 @@ func TestAProgramFinishesInTheLoopAndOpensItsLayer(t *testing.T) {
 	}
 	// The browser was told, and the last thing it was told carries no
 	// running programs and the layer open.
+	// The browser was told. Among everything the tick published — the trace
+	// the program armed included — the last word on the connection has root
+	// and nothing running.
 	sent := out.all()
 	if len(sent) == 0 {
 		t.Fatal("nothing was published while a program ran")
 	}
-	last, ok := sent[len(sent)-1].delta.(ConnectionDelta)
-	if !ok {
-		t.Fatalf("the last delta is a %T", sent[len(sent)-1].delta)
+	var last *ConnectionDelta
+	for _, s := range sent {
+		if d, ok := s.delta.(ConnectionDelta); ok {
+			last = &d
+		}
+	}
+	if last == nil {
+		t.Fatalf("no connection delta among %d published", len(sent))
 	}
 	if !last.Connection.Root || len(last.Connection.Tools) != 0 {
-		t.Errorf("the last delta says root=%v, %d running", last.Connection.Root, len(last.Connection.Tools))
+		t.Errorf("the last word on the connection says root=%v, %d running",
+			last.Connection.Root, len(last.Connection.Tools))
 	}
 }
 

@@ -79,6 +79,7 @@ func init() {
 		{name: "connect", usage: "connect <ip>", summary: "connect to a server through your route", needRun: true, run: (*Env).connect},
 		{name: "disconnect", usage: "disconnect", summary: "close the connection", needConn: true, run: (*Env).disconnect},
 		{name: "links", usage: "links [page]", summary: "read the register (connect to it first)", needConn: true, run: (*Env).links},
+		{name: "trace", usage: "trace", summary: "how far anybody has got in finding you", needRun: true, run: (*Env).traceCmd},
 		{name: "ls", usage: "ls", summary: "the files on the server you are on", needConn: true, run: (*Env).ls},
 		{name: "cat", usage: "cat <path>", summary: "read a file", needConn: true, run: (*Env).cat},
 		{name: "tools", usage: "tools", summary: "the programs on your gateway", needRun: true, run: (*Env).tools},
@@ -220,6 +221,14 @@ func (e *Env) status(ctx context.Context, c cmd) (Result, error) {
 		}
 	} else {
 		lines = append(lines, row("Connection", "none"))
+	}
+	if tr := run.Trace; tr != nil {
+		if tr.Exact {
+			lines = append(lines, row("Trace",
+				fmt.Sprintf("%.1f%%, on %s, %.1f s from your gateway", tr.Progress*100, tr.HopName, tr.Left)))
+		} else {
+			lines = append(lines, row("Trace", fmt.Sprintf("somewhere past %.0f%%", tr.Progress*100)))
+		}
 	}
 	return Result{Lines: lines}, nil
 }
@@ -558,6 +567,14 @@ func (e *Env) cat(_ context.Context, c cmd) (Result, error) {
 		if f.Encrypted {
 			return errorResult("The file is encrypted. A Decrypter has to be run against it first."), nil
 		}
+		// Reading what needed root is an act against the server, so it is
+		// one of the things that starts a trace. Reading what a public
+		// service publishes is not: looking around is safe.
+		if !c.conn.Target.Type().Public() || f.Sensitive {
+			if live, err := e.live(); err == nil {
+				live.ArmTrace(c.p.AccountID, c.run)
+			}
+		}
 		out := Result{Lines: []Line{{Text: f.Path, Kind: KindHead}}}
 		for _, line := range strings.Split(strings.TrimRight(f.Content, "\n"), "\n") {
 			out.Lines = append(out.Lines, Line{Text: "  " + line})
@@ -575,6 +592,18 @@ func (e *Env) mayRead(conn *Connection, f world.File) bool {
 		return true
 	}
 	return conn.Target.Type().Public() && !f.Sensitive
+}
+
+func (e *Env) traceCmd(_ context.Context, c cmd) (Result, error) {
+	live, err := e.live()
+	if err != nil {
+		return Result{}, err
+	}
+	tr, exact := live.Trace(c.p.AccountID)
+	if tr == nil {
+		return Result{Lines: []Line{{Text: "Nobody is working out where you are.", Kind: KindOK}}}, nil
+	}
+	return Result{Lines: tr.lines(exact)}, nil
 }
 
 // registerPage is how many organisations one page of the register holds.

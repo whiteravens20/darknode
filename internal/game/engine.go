@@ -4,10 +4,12 @@ package game
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/whiteravens20/darknode/internal/store"
 	"github.com/whiteravens20/darknode/internal/world"
 )
 
@@ -17,9 +19,10 @@ import (
 // BenchmarkEngineAdvance measures that pass.
 const Tick = 100 * time.Millisecond
 
-// toolReport is how often a browser is told how far the running programs have
-// got. Ten times a second is the simulation's pace, not a progress bar's.
-const toolReport = 500 * time.Millisecond
+// liveReport is how often a browser is told where the running programs and
+// the trace have got to. Ten times a second is the simulation's pace, not a
+// progress bar's.
+const liveReport = 500 * time.Millisecond
 
 // finishedTool is a program that came to an end in this tick.
 type finishedTool struct {
@@ -78,7 +81,14 @@ type liveRun struct {
 	route []*world.Server
 	// conn is the live connection, or nil.
 	conn *Connection
-	// offlineAt is when the last browser stopped watching. The connection
+	// trace is the trace coming down the route, or nil. It outlives the
+	// connection: an administrator cutting the player off does not stop it.
+	trace *trace
+	// meter says whether the run has the program that shows the trace
+	// exactly, and runID is the run the live state belongs to.
+	meter bool
+	runID int64
+	// offlineAt is when the last browser stopped watching. What is live
 	// outlives it by OfflineGrace, so a reload is not a way out.
 	offlineAt time.Time
 }
@@ -165,10 +175,12 @@ func (e *Engine) Run(ctx context.Context) {
 }
 
 // tick advances the simulation by dt and writes down the few things a tick
-// can produce that have to outlive it. The advancing itself is step, which
-// touches no database at all.
+// produces that have to outlive it: the root a program won, and the end of a
+// run the trace caught. The advancing itself is step, which touches no
+// database at all.
 func (e *Engine) tick(ctx context.Context, dt time.Duration, now time.Time) {
-	for _, f := range e.step(dt, now) {
+	finished, busted := e.step(dt, now)
+	for _, f := range finished {
 		if f.tool.Layer != LayerPassword {
 			continue
 		}
@@ -178,27 +190,44 @@ func (e *Engine) tick(ctx context.Context, dt time.Duration, now time.Time) {
 			e.log.Error("write down root", "run", f.runID, "server", f.server, "err", err)
 		}
 	}
+	for _, b := range busted {
+		if err := e.env.Store.EndRun(ctx, b.runID, b.at); err != nil && ctx.Err() == nil {
+			e.log.Error("end a run the trace caught", "run", b.runID, "err", err)
+			continue
+		}
+		e.log.Info("run ended: the trace reached the gateway", "account", b.account, "run", b.runID)
+		// The run is gone, and the loop cannot build a state without the
+		// database, so the browser is asked to take a fresh snapshot.
+		e.out.Publish(b.account, DeltaResync, ResyncDelta{})
+	}
+}
+
+// bustedRun is a run the trace reached the gateway of.
+type bustedRun struct {
+	account int64
+	runID   int64
+	at      time.Time
 }
 
 // step advances the simulation by dt, publishes what changed, and returns the
-// programs that finished. It touches the database never and the clock once,
-// so a tick costs the same whether one player is online or a hundred.
-func (e *Engine) step(dt time.Duration, now time.Time) []finishedTool {
-	worldTime := e.env.Clock.Now(now)
-	minute := worldTime.Truncate(time.Minute)
+// programs that finished and the runs the trace caught. It touches the
+// database never and the clock once, so a tick costs the same whether one
+// player is online or a hundred.
+func (e *Engine) step(dt time.Duration, now time.Time) ([]finishedTool, []bustedRun) {
+	minute := e.env.Clock.Now(now).Truncate(time.Minute)
 
 	// Deltas go out after the lock is given up: the hub takes a lock of its
 	// own, and the loop must never hold two at once.
-	var connected []int64
+	var connected, traced []int64
 	var done []finishedTool
+	var busted []bustedRun
+	var alerts []alert
 
 	e.mu.Lock()
-	// An account keeps its entry after its last stream closed until its
-	// connection and the time it owes are gone, so what counts as online
-	// here is a stream, never the entry.
 	watching := 0
 	for account, r := range e.live {
-		if r.streams > 0 {
+		online := r.streams > 0
+		if online {
 			watching++
 			r.part += dt
 			if r.part >= time.Second {
@@ -206,42 +235,79 @@ func (e *Engine) step(dt time.Duration, now time.Time) []finishedTool {
 				r.owed += seconds
 				r.part -= time.Duration(seconds) * time.Second
 			}
-			if r.conn == nil {
-				continue
+		} else if now.Sub(r.offlineAt) >= OfflineGrace {
+			// The grace is over with nobody watching: what was live is
+			// closed, exactly as a disconnect would close it. An account
+			// that owes nothing and holds nothing live is forgotten.
+			r.conn, r.trace = nil, nil
+			if r.owed == 0 {
+				delete(e.live, account)
 			}
-			if r.conn.State == StateConnecting && now.Sub(r.conn.opened) >= Handshake {
-				r.conn.State = StateConnected
-				r.conn.reported = now
-				connected = append(connected, account)
-				continue
-			}
+			continue
+		}
+		// Through the grace the simulation runs on: closing a tab is not a
+		// way out of a trace that is already coming.
+		if r.conn != nil && r.conn.State == StateConnecting && now.Sub(r.conn.opened) >= Handshake {
+			r.conn.State = StateConnected
+			r.conn.reported = now
+			connected = append(connected, account)
+			continue
+		}
+		if r.conn != nil {
 			// The programs at work share the gateway's processor. A browser
 			// is told how far they have got a few times a second, and at
 			// once when one of them finishes.
 			if finished := r.conn.advanceTools(dt, r.conn.cpuMHz); len(finished) > 0 {
 				r.conn.reported = now
 				connected = append(connected, account)
-				for _, t := range finished {
+				for _, tool := range finished {
 					done = append(done, finishedTool{
-						account: account, tool: t,
+						account: account, tool: tool,
 						runID: r.conn.runID, server: r.conn.Target.ID, at: now,
 					})
 				}
-			} else if len(r.conn.tools) > 0 && now.Sub(r.conn.reported) >= toolReport {
+			} else if len(r.conn.tools) > 0 && now.Sub(r.conn.reported) >= liveReport {
 				r.conn.reported = now
 				connected = append(connected, account)
 			}
+		}
+		if r.trace == nil {
 			continue
 		}
-		// Nobody is watching: the connection runs out its grace and is then
-		// closed as a disconnect would close it. Once nothing of the run is
-		// live and nothing is owed, the entry goes.
-		if now.Sub(r.offlineAt) < OfflineGrace {
+
+		progress := r.trace.advance(dt)
+		switch {
+		case progress >= 1:
+			// The trace is at the gateway. This run is over.
+			busted = append(busted, bustedRun{account: account, runID: r.runID, at: now})
+			alerts = append(alerts, alert{account, "The trace reached your gateway. This run is over.", KindError})
+			r.conn, r.trace = nil, nil
 			continue
+
+		case r.trace.admin && progress >= AdminKicks && !r.trace.kicked:
+			r.trace.kicked = true
+			if r.conn != nil {
+				alerts = append(alerts, alert{account,
+					fmt.Sprintf("An administrator on %s cut your connection. The trace is still coming.",
+						r.conn.Target.Name), KindError})
+				r.conn = nil
+				connected = append(connected, account)
+			}
+
+		case r.trace.admin && progress >= AdminClosesLayer && !r.trace.closedLayer:
+			r.trace.closedLayer = true
+			if r.conn != nil {
+				if layer := r.conn.closeOneLayer(); layer != "" {
+					alerts = append(alerts, alert{account,
+						fmt.Sprintf("Somebody on %s noticed and closed the %s again.",
+							r.conn.Target.Name, layer), KindError})
+					connected = append(connected, account)
+				}
+			}
 		}
-		r.conn = nil
-		if r.owed == 0 {
-			delete(e.live, account)
+		if now.Sub(r.trace.reported) >= liveReport {
+			r.trace.reported = now
+			traced = append(traced, account)
 		}
 	}
 	moved := !minute.Equal(e.worldMinute)
@@ -253,6 +319,12 @@ func (e *Engine) step(dt time.Duration, now time.Time) []finishedTool {
 	for _, account := range connected {
 		e.out.Publish(account, DeltaConnection, ConnectionDelta{Connection: e.ConnectionView(account)})
 	}
+	for _, account := range traced {
+		e.out.Publish(account, DeltaTrace, TraceDelta{Trace: e.TraceView(account)})
+	}
+	for _, a := range alerts {
+		e.out.Publish(a.account, DeltaAlert, AlertDelta{Text: a.text, Kind: a.kind})
+	}
 	for _, f := range done {
 		e.log.Info("program finished", "account", f.account, "program", f.tool.Software, "opens", string(f.tool.Layer))
 	}
@@ -260,7 +332,64 @@ func (e *Engine) step(dt time.Duration, now time.Time) []finishedTool {
 	if moved && watching > 0 {
 		e.out.Broadcast(DeltaWorld, WorldDelta{WorldTime: minute.UTC()})
 	}
-	return done
+	return done, busted
+}
+
+// alert is a line the game says of its own accord, queued until the lock is
+// given up.
+type alert struct {
+	account int64
+	text    string
+	kind    string
+}
+
+// ArmTrace starts the trace against the player's connection, if one is not
+// running already. Everything that counts as an act on the target arms it:
+// setting an intrusion program to work, or reading what needed root.
+func (e *Engine) ArmTrace(account int64, run *store.Run) {
+	now := e.env.Now()
+
+	e.mu.Lock()
+	r := e.live[account]
+	if r == nil || r.conn == nil || r.trace != nil {
+		e.mu.Unlock()
+		return
+	}
+	r.runID = run.ID
+	r.meter = hasTool(run, traceTool)
+	r.trace = newTrace(r.conn, run.Gateway.Security, run.HasRoot, now)
+	view := r.trace.view(r.meter)
+	target := r.conn.Target.Name
+	e.mu.Unlock()
+
+	e.out.Publish(account, DeltaTrace, TraceDelta{Trace: view})
+	e.out.Publish(account, DeltaAlert, AlertDelta{
+		Text: fmt.Sprintf("%s has started working out where you are.", target),
+		Kind: KindError,
+	})
+}
+
+// Trace returns a copy of the player's live trace, or nil.
+func (e *Engine) Trace(account int64) (*trace, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	r := e.live[account]
+	if r == nil || r.trace == nil {
+		return nil, false
+	}
+	copied := *r.trace
+	return &copied, r.meter
+}
+
+// TraceView is what the browser is told about the trace.
+func (e *Engine) TraceView(account int64) *TraceView {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	r := e.live[account]
+	if r == nil || r.trace == nil {
+		return nil
+	}
+	return r.trace.view(r.meter)
 }
 
 // flush writes the counted online time to the database. Accounts that owe the

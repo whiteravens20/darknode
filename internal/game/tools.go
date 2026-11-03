@@ -5,6 +5,7 @@ package game
 import (
 	"errors"
 	"math"
+	"math/rand/v2"
 	"time"
 
 	"github.com/whiteravens20/darknode/internal/store"
@@ -144,6 +145,12 @@ func (e *Engine) StartTool(account int64, run *store.Run, sw *world.Software, ve
 	e.mu.Unlock()
 
 	e.out.Publish(account, DeltaConnection, ConnectionDelta{Connection: view})
+	// Working on the way in is an act against the server, so it is what
+	// starts the trace. Masking the monitor is not: it is preparation, and
+	// doing it first is what holds the trace to its slower rate.
+	if layer == LayerProxy || layer == LayerFirewall || layer == LayerPassword {
+		e.ArmTrace(account, run)
+	}
 	started := *tool
 	return &started, nil
 }
@@ -227,6 +234,40 @@ func (c *Connection) nextLayer() Layer {
 		}
 	}
 	return ""
+}
+
+// closeOneLayer shuts one of the layers the player had opened, which is what
+// an administrator does when a trace is well on its way. The password layer
+// goes with the others: the run keeps the root it was written down for, but
+// on this connection the way in has to be opened again.
+//
+// Which one it is, is the server's choice, not the player's. The caller holds
+// the engine's lock.
+func (c *Connection) closeOneLayer() Layer {
+	var open []Layer
+	for _, layer := range []Layer{LayerProxy, LayerFirewall, LayerPassword, LayerMonitor} {
+		if c.has(layer) && c.open[layer] {
+			open = append(open, layer)
+		}
+	}
+	if len(open) == 0 {
+		return ""
+	}
+	layer := open[rand.IntN(len(open))]
+	c.open[layer] = false
+	if layer == LayerPassword {
+		c.Root = false
+	}
+	// A program working on that layer has lost its ground.
+	kept := c.tools[:0]
+	for _, tool := range c.tools {
+		if tool.Layer == layer {
+			continue
+		}
+		kept = append(kept, tool)
+	}
+	c.tools = kept
+	return layer
 }
 
 // advanceTools gives every running program its share of the processor for dt

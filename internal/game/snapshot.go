@@ -40,6 +40,9 @@ type RunView struct {
 	Route []ServerView `json:"route"`
 	// Connection is the live connection, or null when there is none.
 	Connection *ConnectionView `json:"connection"`
+	// Trace is the trace coming down the route, or null when none runs. It
+	// outlives the connection: being thrown off the target does not stop it.
+	Trace *TraceView `json:"trace"`
 }
 
 // ServerView is a server as the player knows it: the address and the name,
@@ -59,6 +62,17 @@ type ConnectionView struct {
 	Layers []LayerView `json:"layers"`
 	// Tools are the programs at work on the connection.
 	Tools []ToolView `json:"tools"`
+}
+
+// TraceView is how far a trace has come. Without the TraceMeter the progress
+// is rounded to quarters and the rest is left out: a player who has not
+// bought the program knows roughly, not exactly.
+type TraceView struct {
+	Progress float64 `json:"progress"`
+	Exact    bool    `json:"exact"`
+	Hop      int     `json:"hop"`
+	HopName  string  `json:"hop_name"`
+	Left     float64 `json:"left_seconds"`
 }
 
 // LayerView is one of a server's defences.
@@ -162,6 +176,7 @@ func (e *Env) RunState(ctx context.Context, p Player) (*RunView, error) {
 	if e.Engine != nil {
 		v.Route = serverViews(e.Engine.Route(p.AccountID))
 		v.Connection = e.Engine.ConnectionView(p.AccountID)
+		v.Trace = e.Engine.TraceView(p.AccountID)
 	} else {
 		v.Route = []ServerView{}
 	}
