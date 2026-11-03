@@ -68,7 +68,7 @@ it does in production.
 | `internal/config/` | Settings, read from the environment                       |
 | `internal/store/`  | PostgreSQL: the schema, its migrations and the queries    |
 | `internal/auth/`   | Password hashing, the sign-up puzzle, rate limits, codes  |
-| `internal/game/`   | The game itself: the clock, runs, the terminal's commands |
+| `internal/game/`   | The game: the clocks, the simulation loop, runs, commands |
 | `internal/server/` | HTTP: the API, sessions, the state stream                 |
 | `internal/world/`  | The world catalogue and the loader that checks it         |
 | `data/world/`      | The world itself, as data files                           |
@@ -102,6 +102,21 @@ cd web && npm run lint && npm run typecheck && npm run build
 The tests that need a database make one of their own and drop it afterwards.
 Without `DARKNODE_TEST_DATABASE_URL` they skip, which is fine on a laptop; CI
 sets `DARKNODE_TEST_REQUIRE_DB`, so there a missing database fails the run.
+
+The tokenizer that reads what a player typed has a fuzz target, because every
+command goes through it. `go test ./internal/game` runs its seed corpus like
+any test; to let it search for new input:
+
+```bash
+go test -run '^$' -fuzz FuzzTokenize -fuzztime 60s ./internal/game
+```
+
+The simulation loop carries a benchmark, since how much one tick costs decides
+whether one loop can hold every player online:
+
+```bash
+go test -run '^$' -bench BenchmarkEngineStep ./internal/game
+```
 
 One test uses a browser. It starts the server against a real PostgreSQL, has
 it serve the client you built, and walks the path a new player walks: sign up,
