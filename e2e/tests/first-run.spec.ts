@@ -105,6 +105,29 @@ test('an agent signs up, starts a run, reads it, and comes back to it', async ({
     await expect(page.getByTitle('Connection')).toHaveText('not connected');
   });
 
+  await test.step('a program breaks into the practice machine', async () => {
+    // The practice machine was a relay a moment ago; a server cannot be a
+    // relay of its own route.
+    await command(page, 'bounce clear');
+    await command(page, 'connect 10.0.0.1');
+    await expect(page.getByTitle('Connection')).toHaveText(/^on DarkNode Practice Machine/);
+
+    await command(page, 'run pass_breaker');
+    // The progress comes from the simulation loop, which gives the program a
+    // share of the gateway's processor ten times a second.
+    await expect(page.getByTitle('Running programs')).toContainText('PassBreaker');
+    // Security 1 at 2000 MHz is two seconds of work, and then the password
+    // layer is open.
+    await expect(page.getByTitle('Connection')).toHaveText(/^root on DarkNode Practice Machine/, {
+      timeout: 20_000,
+    });
+    await expect(page.getByTitle('Running programs')).toBeHidden();
+
+    await command(page, 'status');
+    await expect(page.getByText(/Layers\s+password open/)).toBeVisible();
+    await command(page, 'disconnect');
+  });
+
   await test.step('signing out ends the session', async () => {
     await command(page, 'logout');
     await expect(page.getByRole('heading', { name: 'DarkNode', level: 1 })).toBeVisible();
