@@ -91,9 +91,9 @@ func exposure(t *testing.T, env *Env, account int64) int64 {
 	return r.ExposureSeconds
 }
 
-// TestOnlineTimeIsCountedOnlyWhileAStreamIsOpen pins §2.3 of the design: the
-// clock a run is judged by runs while the player is watching and stops when
-// the last window closes. It is also what the old five-second ticker got
+// TestOnlineTimeIsCountedOnlyWhileAStreamIsOpen pins the rule the game is
+// built on: the clock a run is judged by runs while the player is watching and
+// stops when the last window closes. It is also what the old five-second ticker got
 // wrong: it gave everyone online at the tick a full five seconds, whether
 // they had been there for five or for one.
 func TestOnlineTimeIsCountedOnlyWhileAStreamIsOpen(t *testing.T) {
@@ -214,9 +214,8 @@ func TestTheWorldClockIsBroadcastWhenItsMinuteChanges(t *testing.T) {
 	}
 }
 
-// BenchmarkEngineStep answers the question §22 point 9 of the design leaves
-// open: whether one loop can carry every player, or whether each needs a
-// goroutine of its own. One step advances every live run and is the work the
+// BenchmarkEngineStep answers the question the design left open: whether one
+// loop can carry every player, or whether each needs a goroutine of its own. One step advances every live run and is the work the
 // server does ten times a second.
 func BenchmarkEngineStep(b *testing.B) {
 	launched := time.Date(2049, 6, 1, 12, 0, 0, 0, time.UTC)

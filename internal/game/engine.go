@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/whiteravens20/darknode/internal/world"
 )
 
 // Tick is the simulation's pace. One ticker drives every live run: a
@@ -48,7 +50,8 @@ type Engine struct {
 	worldMinute time.Time
 }
 
-// liveRun is what the loop keeps for one player who is online.
+// liveRun is what the loop keeps for one player: the time counted, and the
+// state of the run that exists only while they are playing.
 type liveRun struct {
 	// streams is how many of the account's browsers are watching. Online
 	// time is counted while at least one is.
@@ -57,29 +60,38 @@ type liveRun struct {
 	part time.Duration
 	// owed is whole seconds counted but not yet written to the database.
 	owed int64
+	// route are the relays chosen for the next connection.
+	route []*world.Server
+	// conn is the live connection, or nil.
+	conn *Connection
+	// offlineAt is when the last browser stopped watching. The connection
+	// outlives it by OfflineGrace, so a reload is not a way out.
+	offlineAt time.Time
 }
 
 // NewEngine returns the loop for env, publishing through out.
+// The env is given a reference back to the loop, because the commands a
+// player types reach the live state — the route, the connection — through it.
 func NewEngine(env *Env, out Publisher, log *slog.Logger) *Engine {
-	return &Engine{env: env, out: out, log: log, live: map[int64]*liveRun{}}
+	e := &Engine{env: env, out: out, log: log, live: map[int64]*liveRun{}}
+	env.Engine = e
+	return e
 }
 
 // Join records that one more stream of the account is open, which is what
-// being online means (§2.4 of the design): the player's time starts counting.
+// being online means here: the player's time starts counting.
 func (e *Engine) Join(account int64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	r := e.live[account]
-	if r == nil {
-		r = &liveRun{}
-		e.live[account] = r
-	}
+	r := e.liveLocked(account)
 	r.streams++
+	r.offlineAt = time.Time{}
 }
 
 // Leave records that one of the account's streams closed. The part of a
 // second not yet counted is dropped, which is the same rounding a restart
-// does.
+// does. What the player had running stays for OfflineGrace, and the loop
+// clears it from there.
 func (e *Engine) Leave(account int64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -92,9 +104,7 @@ func (e *Engine) Leave(account int64) {
 	}
 	if r.streams == 0 {
 		r.part = 0
-		if r.owed == 0 {
-			delete(e.live, account)
-		}
+		r.offlineAt = e.env.Now()
 	}
 }
 
@@ -147,21 +157,39 @@ func (e *Engine) step(dt time.Duration, now time.Time) {
 	worldTime := e.env.Clock.Now(now)
 	minute := worldTime.Truncate(time.Minute)
 
+	// Deltas go out after the lock is given up: the hub takes a lock of its
+	// own, and the loop must never hold two at once.
+	var connected []int64
+
 	e.mu.Lock()
-	// An account keeps its entry after its last stream closed until the
-	// seconds it owes are written down, so what counts as online here is a
-	// stream, never the entry.
+	// An account keeps its entry after its last stream closed until its
+	// connection and the time it owes are gone, so what counts as online
+	// here is a stream, never the entry.
 	watching := 0
-	for _, r := range e.live {
-		if r.streams == 0 {
+	for account, r := range e.live {
+		if r.streams > 0 {
+			watching++
+			r.part += dt
+			if r.part >= time.Second {
+				seconds := int64(r.part / time.Second)
+				r.owed += seconds
+				r.part -= time.Duration(seconds) * time.Second
+			}
+			if r.conn != nil && r.conn.State == StateConnecting && now.Sub(r.conn.opened) >= Handshake {
+				r.conn.State = StateConnected
+				connected = append(connected, account)
+			}
 			continue
 		}
-		watching++
-		r.part += dt
-		if r.part >= time.Second {
-			seconds := int64(r.part / time.Second)
-			r.owed += seconds
-			r.part -= time.Duration(seconds) * time.Second
+		// Nobody is watching: the connection runs out its grace and is then
+		// closed as a disconnect would close it. Once nothing of the run is
+		// live and nothing is owed, the entry goes.
+		if now.Sub(r.offlineAt) < OfflineGrace {
+			continue
+		}
+		r.conn = nil
+		if r.owed == 0 {
+			delete(e.live, account)
 		}
 	}
 	moved := !minute.Equal(e.worldMinute)
@@ -170,6 +198,9 @@ func (e *Engine) step(dt time.Duration, now time.Time) {
 	}
 	e.mu.Unlock()
 
+	for _, account := range connected {
+		e.out.Publish(account, DeltaConnection, ConnectionDelta{Connection: e.ConnectionView(account)})
+	}
 	// The clock is the same for everyone, so it goes out once, to everyone.
 	if moved && watching > 0 {
 		e.out.Broadcast(DeltaWorld, WorldDelta{WorldTime: minute.UTC()})
@@ -191,8 +222,8 @@ func (e *Engine) flush(ctx context.Context) {
 }
 
 // takeOwed empties the counters and returns the accounts grouped by the
-// seconds they owe. Accounts that owe nothing and have no stream left are
-// forgotten here.
+// seconds they owe. Forgetting an account that has stopped playing is the
+// loop's own work, in step, because only it knows what is still live.
 func (e *Engine) takeOwed() map[int64][]int64 {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -204,9 +235,6 @@ func (e *Engine) takeOwed() map[int64][]int64 {
 			}
 			bySeconds[r.owed] = append(bySeconds[r.owed], account)
 			r.owed = 0
-		}
-		if r.streams == 0 {
-			delete(e.live, account)
 		}
 	}
 	return bySeconds

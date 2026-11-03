@@ -23,9 +23,9 @@ func testWorld(t *testing.T) *world.World {
 		"world.yaml": {Data: []byte(`
 epoch: 2049-01-01T00:00:00Z
 start:
-  links: [practice, home-bank]
+  links: [practice, home-bank, relay-1, relay-2, relay-3, registry]
   bank: home-bank
-  software: [{ id: pass_breaker, version: 1 }]
+  software: [{ id: pass_breaker, version: 1 }, { id: address_probe, version: 1 }]
 `)},
 		"software.yaml": {Data: []byte(`
 software:
@@ -33,6 +33,10 @@ software:
     name: PassBreaker
     description: A test program.
     versions: [{ version: 1, price: 1000, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }]
+  - id: address_probe
+    name: AddressProbe
+    description: Looks a server up before you connect.
+    versions: [{ version: 1, price: 1500, size_mb: 1, cpu_mhz: 0, ram_mb: 0 }]
 `)},
 		"orgs/academy.yaml": {Data: []byte(`
 id: academy
@@ -46,7 +50,24 @@ id: bank
 name: Home Bank
 type: BANK
 location: { x: 20, y: 20 }
-servers: [{ id: home-bank, name: Home Bank, ip: 172.16.0.1, security: 5 }]
+servers: [{ id: home-bank, name: Home Bank, ip: 172.16.0.1, security: 5, firewall: true }]
+`)},
+		"orgs/carrier.yaml": {Data: []byte(`
+id: carrier
+name: Test Carrier
+type: ISP
+location: { x: 30, y: 30 }
+servers:
+  - { id: relay-1, name: Test Relay One, ip: 203.0.113.50, security: 2 }
+  - { id: relay-2, name: Test Relay Two, ip: 203.0.113.51, security: 2 }
+  - { id: relay-3, name: Test Relay Three, ip: 203.0.113.52, security: 2 }
+`)},
+		"orgs/registry.yaml": {Data: []byte(`
+id: registry
+name: Test Registry
+type: INTERNIC
+location: { x: 40, y: 40 }
+servers: [{ id: registry, name: Test Registry, ip: 10.10.10.50, security: 4 }]
 `)},
 	})
 	if err != nil {
@@ -72,6 +93,9 @@ func testEnv(t *testing.T) (*Env, Player) {
 		Clock: Clock{Epoch: time.Date(2049, 1, 1, 0, 0, 0, 0, time.UTC), Launched: launched},
 		Now:   func() time.Time { return launched.Add(90 * time.Second) },
 	}
+	// The commands that build a route or open a connection work on live
+	// state, which the loop holds, so a test of them needs one.
+	NewEngine(env, &recorder{}, quietLogger())
 	return env, Player{AccountID: a.ID, Username: a.Username}
 }
 
@@ -221,17 +245,24 @@ func TestRunNewThenStatusAndServers(t *testing.T) {
 		"Balance     $100 clean, $0 dirty",
 		"CPU 2.0 GHz, RAM 4 GB, modem 100 Mbps, storage 256 GB, 2 NIC, security 1",
 		"PassBreaker v1",
-		"2 known servers",
+		"6 known servers",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status lacks %q:\n%s", want, out)
 		}
 	}
 
+	// Until a server is probed, the player sees the address and the name and
+	// nothing else: not the type, not the security, not the layers.
 	r, _ = env.Execute(ctx, p, "servers")
 	out = text(r)
-	if !strings.Contains(out, "10.0.0.1") || !strings.Contains(out, "Home Bank") || len(r.Lines) != 3 {
-		t.Errorf("servers:\n%s", out)
+	for _, want := range []string{"10.0.0.1", "Home Bank", "not probed"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("servers lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "BANK") || strings.Contains(out, "security 5") {
+		t.Errorf("servers gives away what has not been probed:\n%s", out)
 	}
 }
 
@@ -252,7 +283,7 @@ func TestSnapshot(t *testing.T) {
 	if s.Run.Balance.Clean != StartBalance || s.Run.Gateway != (GatewayView{2000, 4096, 100, 256000, 2, 1}) {
 		t.Errorf("run view: %+v", s.Run)
 	}
-	if len(s.Run.Software) != 1 || s.Run.Software[0].Name != "PassBreaker" || s.Run.KnownServers != 2 {
+	if len(s.Run.Software) != 2 || s.Run.Software[0].Name != "AddressProbe" || s.Run.KnownServers != 6 {
 		t.Errorf("software %+v, known %d", s.Run.Software, s.Run.KnownServers)
 	}
 }

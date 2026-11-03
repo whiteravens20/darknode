@@ -5,6 +5,8 @@ package game
 import (
 	"context"
 	"time"
+
+	"github.com/whiteravens20/darknode/internal/world"
 )
 
 // Snapshot is the whole state the client is shown, sent when its stream opens
@@ -33,6 +35,40 @@ type RunView struct {
 	Gateway         GatewayView    `json:"gateway"`
 	Software        []SoftwareView `json:"software"`
 	KnownServers    int            `json:"known_servers"`
+	// Route are the relays chosen for the next connection, in order from the
+	// gateway outwards.
+	Route []ServerView `json:"route"`
+	// Connection is the live connection, or null when there is none.
+	Connection *ConnectionView `json:"connection"`
+}
+
+// ServerView is a server as the player knows it: the address and the name,
+// which is all one sees without probing it.
+type ServerView struct {
+	IP   string `json:"ip"`
+	Name string `json:"name"`
+}
+
+// ConnectionView is the live connection.
+type ConnectionView struct {
+	Target ServerView   `json:"target"`
+	Route  []ServerView `json:"route"`
+	State  string       `json:"state"`
+	Root   bool         `json:"root"`
+}
+
+// serverView describes one server to the browser.
+func serverView(s *world.Server) ServerView {
+	return ServerView{IP: s.IP.String(), Name: s.Name}
+}
+
+// serverViews describes a list of servers to the browser.
+func serverViews(servers []*world.Server) []ServerView {
+	out := make([]ServerView, 0, len(servers))
+	for _, s := range servers {
+		out = append(out, serverView(s))
+	}
+	return out
 }
 
 // BalanceView is the money in the primary account.
@@ -100,6 +136,14 @@ func (e *Env) RunState(ctx context.Context, p Player) (*RunView, error) {
 			name = sw.Name
 		}
 		v.Software = append(v.Software, SoftwareView{ID: i.Software, Name: name, Version: i.Version})
+	}
+	// The route and the connection are live: they are the loop's, not the
+	// database's, and a run has them only while somebody is playing it.
+	if e.Engine != nil {
+		v.Route = serverViews(e.Engine.Route(p.AccountID))
+		v.Connection = e.Engine.ConnectionView(p.AccountID)
+	} else {
+		v.Route = []ServerView{}
 	}
 	return v, nil
 }

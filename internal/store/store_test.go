@@ -207,8 +207,38 @@ func TestOneActiveRunPerAccount(t *testing.T) {
 	if r.Gateway.CPUMHz != 2000 || len(r.Accounts) != 1 || r.Accounts[0].Clean != 100 || !r.Accounts[0].Primary {
 		t.Fatalf("run state: %+v", r)
 	}
-	if len(r.Software) != 1 || len(r.Known) != 2 || r.Known[0] != "home-bank" {
+	if len(r.Software) != 1 || len(r.Known) != 2 || r.Known[0].Server != "home-bank" {
 		t.Fatalf("software %v, known %v", r.Software, r.Known)
+	}
+	if r.Known[0].Probed {
+		t.Error("a server the run has only heard of is marked as probed")
+	}
+	if !r.Knows("test-1") || r.Knows("never-heard-of") {
+		t.Error("Knows does not answer for the addresses the run has")
+	}
+
+	// Probing is what makes a server's type and defences visible, so the flag
+	// has to survive the round trip; an address the run does not have cannot
+	// be probed at all.
+	switch probed, err := s.MarkProbed(ctx, r.ID, "test-1"); {
+	case err != nil:
+		t.Fatal(err)
+	case !probed:
+		t.Fatal("MarkProbed did not find a server the run knows")
+	}
+	if probed, err := s.MarkProbed(ctx, r.ID, "never-heard-of"); err != nil {
+		t.Fatal(err)
+	} else if probed {
+		t.Error("MarkProbed accepted a server the run does not know")
+	}
+	r, err = s.ActiveRun(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range r.Known {
+		if (k.Server == "test-1") != k.Probed {
+			t.Errorf("after probing test-1, %s has probed=%v", k.Server, k.Probed)
+		}
 	}
 	if err := s.AddExposure(ctx, []int64{a.ID}, 5); err != nil {
 		t.Fatal(err)

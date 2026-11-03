@@ -6,10 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/whiteravens20/darknode/internal/legal"
 	"github.com/whiteravens20/darknode/internal/store"
+	"github.com/whiteravens20/darknode/internal/world"
 )
 
 // Kinds of output line, which the terminal colours.
@@ -40,12 +42,26 @@ const MaxLineLength = 1000
 // ClientCommands are handled by the terminal itself and never reach the server.
 var ClientCommands = []string{"clear", "history", "logout"}
 
+// cmd is what a command is given: who typed it, the words after its name, and
+// the state it said it needs.
+type cmd struct {
+	p    Player
+	args []string
+	// run is the player's active run, for a command that needs one.
+	run *store.Run
+	// conn is the live connection, for a command that needs one.
+	conn *Connection
+}
+
 type command struct {
 	name    string
 	usage   string
 	summary string
+	// needRun loads the active run and refuses the command without one.
 	needRun bool
-	run     func(e *Env, ctx context.Context, p Player, args []string) (Result, error)
+	// needConn also requires a live connection. It implies needRun.
+	needConn bool
+	run      func(e *Env, ctx context.Context, c cmd) (Result, error)
 }
 
 var commands []command
@@ -55,7 +71,13 @@ func init() {
 		{name: "help", usage: "help", summary: "list the commands", run: (*Env).help},
 		{name: "whoami", usage: "whoami", summary: "show your agent name", run: (*Env).whoami},
 		{name: "status", usage: "status", summary: "your money, hardware and software", needRun: true, run: (*Env).status},
-		{name: "servers", usage: "servers", summary: "the servers in your address book", needRun: true, run: (*Env).servers},
+		{name: "servers", usage: "servers", summary: "the addresses you know", needRun: true, run: (*Env).servers},
+		{name: "lookup", usage: "lookup <text>", summary: "find an address by name, or a name by address", needRun: true, run: (*Env).lookup},
+		{name: "probe", usage: "probe <ip>", summary: "see a server's type and defences before connecting", needRun: true, run: (*Env).probe},
+		{name: "bounce", usage: "bounce …", summary: "build the route your connection takes", needRun: true, run: (*Env).bounce},
+		{name: "connect", usage: "connect <ip>", summary: "connect to a server through your route", needRun: true, run: (*Env).connect},
+		{name: "disconnect", usage: "disconnect", summary: "close the connection", needConn: true, run: (*Env).disconnect},
+		{name: "links", usage: "links [page]", summary: "read the register (connect to it first)", needConn: true, run: (*Env).links},
 		{name: "run", usage: "run new", summary: "start a new run", run: (*Env).runCmd},
 		{name: "about", usage: "about", summary: "licence, source code and credits", run: (*Env).about},
 	}
@@ -86,7 +108,8 @@ func (e *Env) Execute(ctx context.Context, p Player, line string) (Result, error
 		if c.name != name {
 			continue
 		}
-		if c.needRun {
+		call := cmd{p: p, args: args[1:]}
+		if c.needRun || c.needConn {
 			r, err := e.Store.ActiveRun(ctx, p.AccountID)
 			if err != nil {
 				return Result{}, err
@@ -94,31 +117,51 @@ func (e *Env) Execute(ctx context.Context, p Player, line string) (Result, error
 			if r == nil {
 				return errorResult("You have no active run. Type `run new` to start one."), nil
 			}
+			call.run = r
 		}
-		return c.run(e, ctx, p, args[1:])
+		if c.needConn {
+			live, err := e.live()
+			if err != nil {
+				return Result{}, err
+			}
+			call.conn = live.Connection(p.AccountID)
+			if call.conn == nil {
+				return errorResult("You are not connected to anything. Type `connect <ip>`."), nil
+			}
+		}
+		return c.run(e, ctx, call)
 	}
 	return errorResult(fmt.Sprintf("Unknown command %q. Type `help` for the list.", args[0])), nil
 }
 
-func (e *Env) help(_ context.Context, _ Player, _ []string) (Result, error) {
+// live returns the simulation loop, which holds the route and the connection.
+// A served instance always has one; a game built without one cannot connect.
+func (e *Env) live() (*Engine, error) {
+	if e.Engine == nil {
+		return nil, errors.New("the game is running without a simulation loop")
+	}
+	return e.Engine, nil
+}
+
+func (e *Env) help(_ context.Context, _ cmd) (Result, error) {
 	r := Result{Lines: []Line{{Text: "COMMANDS", Kind: KindHead}}}
 	for _, c := range commands {
-		r.Lines = append(r.Lines, Line{Text: fmt.Sprintf("  %-12s %s", c.usage, c.summary)})
+		r.Lines = append(r.Lines, Line{Text: fmt.Sprintf("  %-14s %s", c.usage, c.summary)})
 	}
 	r.Lines = append(r.Lines,
-		Line{Text: fmt.Sprintf("  %-12s %s", "clear", "clear the screen")},
-		Line{Text: fmt.Sprintf("  %-12s %s", "history", "the commands you typed")},
-		Line{Text: fmt.Sprintf("  %-12s %s", "logout", "sign out")},
+		Line{Text: fmt.Sprintf("  %-14s %s", "clear", "clear the screen")},
+		Line{Text: fmt.Sprintf("  %-14s %s", "history", "the commands you typed")},
+		Line{Text: fmt.Sprintf("  %-14s %s", "logout", "sign out")},
 	)
 	return r, nil
 }
 
-func (e *Env) whoami(_ context.Context, p Player, _ []string) (Result, error) {
-	return Result{Lines: []Line{{Text: "Agent " + p.Username}}}, nil
+func (e *Env) whoami(_ context.Context, c cmd) (Result, error) {
+	return Result{Lines: []Line{{Text: "Agent " + c.p.Username}}}, nil
 }
 
-func (e *Env) status(ctx context.Context, p Player, _ []string) (Result, error) {
-	s, err := e.Snapshot(ctx, p)
+func (e *Env) status(ctx context.Context, c cmd) (Result, error) {
+	s, err := e.Snapshot(ctx, c.p)
 	if err != nil {
 		return Result{}, err
 	}
@@ -135,9 +178,9 @@ func (e *Env) status(ctx context.Context, p Player, _ []string) (Result, error) 
 		sw = []string{"none"}
 	}
 	row := func(label, value string) Line { return Line{Text: fmt.Sprintf("  %-11s %s", label, value)} }
-	return Result{Lines: []Line{
+	lines := []Line{
 		{Text: "STATUS", Kind: KindHead},
-		row("Agent", p.Username),
+		row("Agent", c.p.Username),
 		row("World time", FormatWorldTime(s.WorldTime)),
 		row("Time online", FormatGameDuration(run.ExposureSeconds)),
 		row("Balance", fmt.Sprintf("$%d clean, $%d dirty", run.Balance.Clean, run.Balance.Dirty)),
@@ -146,30 +189,343 @@ func (e *Env) status(ctx context.Context, p Player, _ []string) (Result, error) 
 			float64(g.CPUMHz)/1000, g.RAMMB/1024, g.ModemMbps, g.StorageMB/1000, g.NICCount, g.Security)),
 		row("Software", strings.Join(sw, ", ")),
 		row("Links", fmt.Sprintf("%d known servers; type `servers`", run.KnownServers)),
-	}}, nil
+		row("Route", routeText(run.Route)),
+	}
+	if conn := run.Connection; conn != nil {
+		access := "no root"
+		if conn.Root {
+			access = "root"
+		}
+		lines = append(lines, row("Connection",
+			fmt.Sprintf("%s (%s) — %s, %s", conn.Target.Name, conn.Target.IP, strings.ToLower(conn.State), access)))
+	} else {
+		lines = append(lines, row("Connection", "none"))
+	}
+	return Result{Lines: lines}, nil
 }
 
-func (e *Env) servers(ctx context.Context, p Player, _ []string) (Result, error) {
-	r, err := e.Store.ActiveRun(ctx, p.AccountID)
-	if err != nil {
-		return Result{}, err
+// routeText writes a route the way a player reads it.
+func routeText(route []ServerView) string {
+	if len(route) == 0 {
+		return "straight at the target, no relays"
 	}
-	out := Result{Lines: []Line{{Text: fmt.Sprintf("  %-16s %-30s %s", "ADDRESS", "NAME", "TYPE"), Kind: KindHead}}}
-	for _, id := range r.Known {
-		s, ok := e.World.ServerByID(id)
+	names := make([]string, 0, len(route))
+	for _, s := range route {
+		names = append(names, s.IP)
+	}
+	return fmt.Sprintf("%d relay(s): %s", len(route), strings.Join(names, " → "))
+}
+
+func (e *Env) servers(_ context.Context, c cmd) (Result, error) {
+	out := Result{Lines: []Line{{
+		Text: fmt.Sprintf("  %-16s %-31s %s", "ADDRESS", "NAME", "WHAT YOU KNOW OF IT"),
+		Kind: KindHead,
+	}}}
+	for _, k := range c.run.Known {
+		s, ok := e.World.ServerByID(k.Server)
 		if !ok {
 			continue // a server removed from the catalogue since the run began
 		}
-		out.Lines = append(out.Lines, Line{Text: fmt.Sprintf("  %-16s %-30s %s", s.IP, s.Name, s.Type())})
+		known := "not probed"
+		if k.Probed {
+			known = fmt.Sprintf("%s, security %d, %s", s.Type(), s.Security, layersText(s))
+		}
+		out.Lines = append(out.Lines, Line{
+			Text: fmt.Sprintf("  %-16s %-31s %s", s.IP, s.Name, known),
+		})
+	}
+	out.Lines = append(out.Lines, Line{Text: "  `probe <ip>` tells you what stands in the way.", Kind: KindDim})
+	return out, nil
+}
+
+// layersText names a server's layers in the order they have to be opened.
+func layersText(s *world.Server) string {
+	var layers []string
+	if s.Proxy {
+		layers = append(layers, "proxy")
+	}
+	if s.Firewall {
+		layers = append(layers, "firewall")
+	}
+	layers = append(layers, "password")
+	if s.Monitor {
+		layers = append(layers, "monitor")
+	}
+	if s.Type().Public() {
+		return "open to read, no trace"
+	}
+	return strings.Join(layers, " + ")
+}
+
+// probeTool is the program that lookup and probe need.
+const probeTool = "address_probe"
+
+// hasTool reports whether the run has the program installed.
+func hasTool(run *store.Run, id string) bool {
+	for _, i := range run.Software {
+		if i.Software == id {
+			return true
+		}
+	}
+	return false
+}
+
+// missingTool is the one wording for a command whose program the player does
+// not have.
+func (e *Env) missingTool(id string) Result {
+	name := id
+	if sw, ok := e.World.SoftwareByID(id); ok {
+		name = sw.Name
+	}
+	return errorResult(fmt.Sprintf("That needs %s, which you do not have. The shop sells it.", name))
+}
+
+func (e *Env) lookup(_ context.Context, c cmd) (Result, error) {
+	if len(c.args) != 1 {
+		return errorResult("Usage: lookup <text>"), nil
+	}
+	if !hasTool(c.run, probeTool) {
+		return e.missingTool(probeTool), nil
+	}
+	query := strings.ToLower(c.args[0])
+
+	// The register knows every organisation; an address, though, is only
+	// given for one this run already has.
+	out := Result{}
+	for _, k := range c.run.Known {
+		s, ok := e.World.ServerByID(k.Server)
+		if !ok {
+			continue
+		}
+		if strings.Contains(strings.ToLower(s.Name), query) || strings.Contains(s.IP.String(), query) ||
+			strings.Contains(strings.ToLower(s.Org.Name), query) {
+			out.Lines = append(out.Lines, Line{Text: fmt.Sprintf("  %-16s %s", s.IP, s.Name)})
+		}
+	}
+	if len(out.Lines) > 0 {
+		return out, nil
+	}
+	for _, org := range e.World.Orgs {
+		if strings.Contains(strings.ToLower(org.Name), query) {
+			return Result{Lines: []Line{
+				{Text: fmt.Sprintf("The register has %s, but you do not have its address.", org.Name)},
+				{Text: "Addresses come from contracts and from what you read on other machines.", Kind: KindDim},
+			}}, nil
+		}
+	}
+	return errorResult(fmt.Sprintf("Nothing you know matches %q.", c.args[0])), nil
+}
+
+func (e *Env) probe(ctx context.Context, c cmd) (Result, error) {
+	if len(c.args) != 1 {
+		return errorResult("Usage: probe <ip>"), nil
+	}
+	if !hasTool(c.run, probeTool) {
+		return e.missingTool(probeTool), nil
+	}
+	s, out := e.knownServer(c.run, c.args[0])
+	if s == nil {
+		return out, nil
+	}
+	probed, err := e.Store.MarkProbed(ctx, c.run.ID, s.ID)
+	if err != nil {
+		return Result{}, err
+	}
+	if !probed {
+		return errorResult("You do not know that address."), nil
+	}
+	row := func(label, value string) Line { return Line{Text: fmt.Sprintf("  %-10s %s", label, value)} }
+	return Result{Changed: true, Lines: []Line{
+		{Text: fmt.Sprintf("PROBE %s", s.IP), Kind: KindHead},
+		row("Name", s.Name),
+		row("Owner", s.Org.Name),
+		row("Type", string(s.Type())),
+		row("Security", fmt.Sprint(s.Security)),
+		row("Layers", layersText(s)),
+	}}, nil
+}
+
+// knownServer resolves an address the player typed to a server the run knows.
+// The answer for an address that is not in the world and for one the run has
+// never heard of is the same, so probing cannot be used to map the catalogue.
+func (e *Env) knownServer(run *store.Run, text string) (*world.Server, Result) {
+	ip, ok := addr(text)
+	if !ok {
+		return nil, errorResult(fmt.Sprintf("%q is not an address.", text))
+	}
+	s, found := e.World.ServerByIP(ip)
+	if !found || !run.Knows(s.ID) {
+		return nil, errorResult("You do not know that address. `servers` lists the ones you have.")
+	}
+	return s, Result{}
+}
+
+func (e *Env) bounce(_ context.Context, c cmd) (Result, error) {
+	live, err := e.live()
+	if err != nil {
+		return Result{}, err
+	}
+	action := "list"
+	if len(c.args) > 0 {
+		action = strings.ToLower(c.args[0])
+	}
+	switch action {
+	case "list":
+		route := serverViews(live.Route(c.p.AccountID))
+		lines := []Line{{Text: "ROUTE", Kind: KindHead}, {Text: "  " + routeText(route)}}
+		lines = append(lines, Line{
+			Text: fmt.Sprintf("  Your gateway has %d network card(s), so at most %d relay(s).",
+				c.run.Gateway.NICCount, c.run.Gateway.NICCount),
+			Kind: KindDim,
+		})
+		return Result{Lines: lines}, nil
+
+	case "clear":
+		live.ClearRoute(c.p.AccountID)
+		return Result{Changed: true, Lines: []Line{{Text: "Route cleared.", Kind: KindOK}}}, nil
+
+	case "add":
+		if len(c.args) != 2 {
+			return errorResult("Usage: bounce add <ip>"), nil
+		}
+		relay, out := e.knownServer(c.run, c.args[1])
+		if relay == nil {
+			return out, nil
+		}
+		switch err := live.AddRelay(c.p.AccountID, relay, c.run.Gateway.NICCount); {
+		case errors.Is(err, ErrPublicRelay):
+			return errorResult("A public service will not pass a break-in through. Use an ISP or a university."), nil
+		case errors.Is(err, ErrRelayAlreadyOnIt):
+			return errorResult("That relay is already on the route."), nil
+		case errors.Is(err, ErrRouteFull):
+			return errorResult(fmt.Sprintf("Your gateway has %d network card(s); that is the longest route it can hold.",
+				c.run.Gateway.NICCount)), nil
+		case err != nil:
+			return Result{}, err
+		}
+		route := serverViews(live.Route(c.p.AccountID))
+		return Result{Changed: true, Lines: []Line{
+			{Text: fmt.Sprintf("%s added to the route.", relay.Name), Kind: KindOK},
+			{Text: "  " + routeText(route)},
+		}}, nil
+
+	default:
+		return errorResult("Usage: bounce list | bounce add <ip> | bounce clear"), nil
+	}
+}
+
+func (e *Env) connect(_ context.Context, c cmd) (Result, error) {
+	live, err := e.live()
+	if err != nil {
+		return Result{}, err
+	}
+	if len(c.args) != 1 {
+		return errorResult("Usage: connect <ip>"), nil
+	}
+	target, out := e.knownServer(c.run, c.args[0])
+	if target == nil {
+		return out, nil
+	}
+	conn, err := live.Connect(c.p.AccountID, target, c.run.Gateway.NICCount)
+	switch {
+	case errors.Is(err, ErrAlreadyConnected):
+		return errorResult("You are connected to something already. `disconnect` first."), nil
+	case errors.Is(err, ErrTargetIsOnTheRoute):
+		return errorResult("That server is a relay on your own route. `bounce clear` and build it again."), nil
+	case errors.Is(err, ErrRouteFull):
+		return errorResult("Your route is longer than your gateway's network cards allow."), nil
+	case err != nil:
+		return Result{}, err
+	}
+
+	lines := []Line{{Text: fmt.Sprintf("Connecting to %s (%s)…", target.Name, target.IP)}}
+	if len(conn.Route) > 0 {
+		lines = append(lines, Line{Text: "  " + routeText(serverViews(conn.Route)), Kind: KindDim})
+	}
+	if conn.Root {
+		lines = append(lines,
+			Line{Text: "Connected. It is a public service: open to read, and nothing here traces you.", Kind: KindOK})
+		return Result{Lines: lines}, nil
+	}
+	lines = append(lines,
+		Line{Text: fmt.Sprintf("Connected without root. In the way: %s.", layersText(target)), Kind: KindOK})
+	return Result{Lines: lines}, nil
+}
+
+func (e *Env) disconnect(_ context.Context, c cmd) (Result, error) {
+	live, err := e.live()
+	if err != nil {
+		return Result{}, err
+	}
+	conn, err := live.Disconnect(c.p.AccountID)
+	if errors.Is(err, ErrNoConnection) {
+		return errorResult("You are not connected to anything."), nil
+	}
+	if err != nil {
+		return Result{}, err
+	}
+	lines := []Line{{Text: fmt.Sprintf("Disconnected from %s.", conn.Target.Name), Kind: KindOK}}
+	if !conn.Target.Type().Public() {
+		lines = append(lines, Line{
+			Text: "Anything you opened there is closed again; going back means opening it from the start.",
+			Kind: KindDim,
+		})
+	}
+	return Result{Lines: lines}, nil
+}
+
+// registerPage is how many organisations one page of the register holds.
+const registerPage = 10
+
+func (e *Env) links(_ context.Context, c cmd) (Result, error) {
+	if c.conn.Target.Type() != world.TypeInterNIC {
+		return errorResult("The register is on the InterNIC machine; you are connected to something else."), nil
+	}
+	if c.conn.State != StateConnected {
+		return errorResult("The connection is still coming up."), nil
+	}
+	page := 1
+	if len(c.args) == 1 {
+		n, err := strconv.Atoi(c.args[0])
+		if err != nil || n < 1 {
+			return errorResult("Usage: links [page]"), nil
+		}
+		page = n
+	}
+	pages := (len(e.World.Orgs) + registerPage - 1) / registerPage
+	if page > pages {
+		return errorResult(fmt.Sprintf("The register has %d page(s).", pages)), nil
+	}
+
+	// The register holds every organisation with an address; what it does not
+	// hand out is the address itself, unless this run already has it.
+	out := Result{Lines: []Line{
+		{Text: fmt.Sprintf("THE REGISTER — page %d of %d", page, pages), Kind: KindHead},
+		{Text: fmt.Sprintf("  %-32s %-16s %s", "ORGANISATION", "ADDRESS", "KIND"), Kind: KindDim},
+	}}
+	for _, org := range e.World.Orgs[(page-1)*registerPage : min(page*registerPage, len(e.World.Orgs))] {
+		address := "—"
+		for _, s := range org.Servers {
+			if c.run.Knows(s.ID) {
+				address = s.IP.String()
+				break
+			}
+		}
+		out.Lines = append(out.Lines, Line{
+			Text: fmt.Sprintf("  %-32s %-16s %s", org.Name, address, org.Type),
+		})
+	}
+	if page < pages {
+		out.Lines = append(out.Lines, Line{Text: fmt.Sprintf("  `links %d` for the next page.", page+1), Kind: KindDim})
 	}
 	return out, nil
 }
 
-func (e *Env) runCmd(ctx context.Context, p Player, args []string) (Result, error) {
-	if len(args) != 1 || strings.ToLower(args[0]) != "new" {
+func (e *Env) runCmd(ctx context.Context, c cmd) (Result, error) {
+	if len(c.args) != 1 || strings.ToLower(c.args[0]) != "new" {
 		return errorResult("Usage: run new"), nil
 	}
-	err := e.StartRun(ctx, p)
+	err := e.StartRun(ctx, c.p)
 	if errors.Is(err, store.ErrRunActive) {
 		return errorResult("You already have an active run."), nil
 	}
@@ -182,7 +538,7 @@ func (e *Env) runCmd(ctx context.Context, p Player, args []string) (Result, erro
 	}}, nil
 }
 
-func (e *Env) about(_ context.Context, _ Player, _ []string) (Result, error) {
+func (e *Env) about(_ context.Context, _ cmd) (Result, error) {
 	r := Result{}
 	for _, l := range legal.Lines() {
 		r.Lines = append(r.Lines, Line{Text: l})

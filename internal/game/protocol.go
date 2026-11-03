@@ -13,6 +13,9 @@ const (
 	DeltaSnapshot = "snapshot"
 	// DeltaRun is the run's state after something changed it.
 	DeltaRun = "run"
+	// DeltaConnection is where the player is connected, and how far the
+	// connection has got.
+	DeltaConnection = "connection"
 	// DeltaWorld is the shared clock, sent to everyone as it moves.
 	DeltaWorld = "world"
 	// DeltaResync tells a browser to open the stream again, because the
@@ -54,6 +57,15 @@ type RunDelta struct {
 
 // WithSeq returns a copy of the delta numbered seq.
 func (d RunDelta) WithSeq(seq uint64) Delta { d.Seq = seq; return d }
+
+// ConnectionDelta is the live connection, or null once there is none.
+type ConnectionDelta struct {
+	Seq        uint64          `json:"seq"`
+	Connection *ConnectionView `json:"connection"`
+}
+
+// WithSeq returns a copy of the delta numbered seq.
+func (d ConnectionDelta) WithSeq(seq uint64) Delta { d.Seq = seq; return d }
 
 // ResyncDelta asks a browser to open the stream again.
 type ResyncDelta struct {

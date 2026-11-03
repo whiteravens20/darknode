@@ -30,6 +30,14 @@ type Installed struct {
 	Version  int
 }
 
+// Known is a server whose address the run has, and whether it has been
+// probed: until it is, the player sees the address and the name and nothing
+// else about it.
+type Known struct {
+	Server string
+	Probed bool
+}
+
 // BankAccount is one of the player's bank accounts.
 type BankAccount struct {
 	Server  string
@@ -57,7 +65,17 @@ type Run struct {
 	Gateway         Gateway
 	Accounts        []BankAccount
 	Software        []Installed
-	Known           []string
+	Known           []Known
+}
+
+// Knows reports whether the run has the address of the given server.
+func (r *Run) Knows(server string) bool {
+	for _, k := range r.Known {
+		if k.Server == server {
+			return true
+		}
+	}
+	return false
 }
 
 // CreateRun starts a run. It fails with ErrRunActive when the account has one.
@@ -133,16 +151,28 @@ func (s *Store) ActiveRun(ctx context.Context, accountID int64) (*Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	r.Known, err = collect(ctx, s, "SELECT server FROM known_server WHERE run_id = $1 ORDER BY server", r.ID,
-		func(row pgx.CollectableRow) (string, error) {
-			var srv string
-			err := row.Scan(&srv)
-			return srv, err
+	r.Known, err = collect(ctx, s, "SELECT server, probed FROM known_server WHERE run_id = $1 ORDER BY server", r.ID,
+		func(row pgx.CollectableRow) (Known, error) {
+			var k Known
+			err := row.Scan(&k.Server, &k.Probed)
+			return k, err
 		})
 	if err != nil {
 		return nil, err
 	}
 	return r, nil
+}
+
+// MarkProbed records that the run has probed the server, which is what makes
+// its type, its security level and its layers visible to the player. It
+// reports whether the run knows that address at all.
+func (s *Store) MarkProbed(ctx context.Context, runID int64, server string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, "UPDATE known_server SET probed = true WHERE run_id = $1 AND server = $2",
+		runID, server)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // AddExposure adds seconds of online time to the active runs of the given accounts.

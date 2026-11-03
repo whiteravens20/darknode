@@ -20,6 +20,10 @@ type Env struct {
 	Clock Clock
 	// Now returns the real time; tests replace it.
 	Now func() time.Time
+	// Engine is the simulation loop, which holds everything that is live:
+	// the route a player is building and the connection they are on. It is
+	// set by NewEngine, and is nil in a test that runs no loop.
+	Engine *Engine
 }
 
 // Player is the signed-in account a command or a snapshot is for.
