@@ -120,6 +120,11 @@ func TestLoadReportsManyProblems(t *testing.T) {
 		"filename mismatch": {"orgs/academy.yaml",
 			strings.Replace(string(base()["orgs/academy.yaml"].Data), "id: academy", "id: school", 1),
 			"must be named school.yaml"},
+		// `run new` starts a run and `run <program>` sets a program to work,
+		// so a program called "new" would make one of the two unreachable.
+		"program called new": {"software.yaml",
+			strings.Replace(string(base()["software.yaml"].Data), "id: pass_breaker", "id: new", 1),
+			"keeps that word"},
 		"unknown yaml key": {"orgs/academy.yaml",
 			string(base()["orgs/academy.yaml"].Data) + "colour: green\n",
 			"field colour not found"},

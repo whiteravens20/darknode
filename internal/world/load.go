@@ -284,6 +284,12 @@ func (v *validator) software(w *World, sf *softwareFile) {
 		if !regexp.MustCompile(`^[a-z0-9]+(_[a-z0-9]+)*$`).MatchString(s.ID) {
 			v.add("%s: id %q must be lower-case letters, digits and single underscores", at, s.ID)
 		}
+		// The terminal reads `run new` as "start a run" and `run <id>` as
+		// "set this program to work", so a program called "new" would make
+		// one of the two unreachable.
+		if s.ID == "new" {
+			v.add("%s: a program cannot be called %q: the terminal keeps that word for `run new`", at, s.ID)
+		}
 		if _, dup := w.softwareByID[s.ID]; dup {
 			v.add("%s: id %q is used twice", at, s.ID)
 		}
