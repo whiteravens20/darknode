@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -101,6 +102,66 @@ func TestTokenize(t *testing.T) {
 	if _, err := Tokenize(`cat "open`); !errors.Is(err, ErrUnclosedQuote) {
 		t.Errorf("an unclosed quote was accepted: %v", err)
 	}
+}
+
+// requote writes a token as a quoted word, so that Tokenize reads it back
+// unchanged whatever is inside it.
+func requote(token string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range token {
+		if r == '"' || r == '\\' {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// FuzzTokenize throws anything at the one piece of the game that reads what a
+// player typed. Tokenize stands in front of every command, so a line that
+// makes it panic would take the request down, and a line it reads two
+// different ways would make a command do something else than it says.
+//
+// The property: whatever Tokenize found, writing those words back as quoted
+// words and reading them again gives the same words. That is what keeps a
+// file name with a space, a quote or a backslash in it whole on its way
+// through the terminal.
+func FuzzTokenize(f *testing.F) {
+	for _, seed := range []string{
+		"", "   ", "status", "run new", "  run   new ",
+		`cat "my file.txt"`, `say "a \"quoted\" one"`, `cat "back\\slash"`,
+		`x ""`, `cat "open`, "\t\ttabs\t", "ęóąśłżźćń", "\x00\x01",
+		strings.Repeat("a ", 100), strings.Repeat(`"`, 9),
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, line string) {
+		tokens, err := Tokenize(line)
+		if err != nil {
+			if !errors.Is(err, ErrUnclosedQuote) {
+				t.Fatalf("Tokenize(%q) failed with an unexpected error: %v", line, err)
+			}
+			if tokens != nil {
+				t.Fatalf("Tokenize(%q) returned %q together with an error", line, tokens)
+			}
+			return
+		}
+		written := make([]string, 0, len(tokens))
+		for _, token := range tokens {
+			written = append(written, requote(token))
+		}
+		again, err := Tokenize(strings.Join(written, " "))
+		if err != nil {
+			t.Fatalf("Tokenize(%q) = %q; written back as %s it no longer parses: %v",
+				line, tokens, strings.Join(written, " "), err)
+		}
+		if !slices.Equal(again, tokens) {
+			t.Fatalf("Tokenize(%q) = %q; written back and read again it is %q", line, tokens, again)
+		}
+	})
 }
 
 func TestCommandsWithoutARun(t *testing.T) {
