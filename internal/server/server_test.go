@@ -463,8 +463,8 @@ func answerText(out map[string]any) string {
 	return sb.String()
 }
 
-// TestTheStreamOpensWithASnapshotAndThenSendsDeltas is the protocol of §17.1:
-// the whole state once, then only what changed, numbered so a browser can
+// TestTheStreamOpensWithASnapshotAndThenSendsDeltas is the stream's whole
+// protocol: the state once, then only what changed, numbered so a browser can
 // tell that it missed something.
 func TestTheStreamOpensWithASnapshotAndThenSendsDeltas(t *testing.T) {
 	ts := newTestServer(t)
@@ -559,5 +559,61 @@ func TestAnImpossibleCommandIDIsRefused(t *testing.T) {
 		if status != http.StatusBadRequest {
 			t.Errorf("the id %q was answered %d %v, want 400", id, status, out)
 		}
+	}
+}
+
+// TestTheStreamFollowsTheConnection is the path from the simulation loop to
+// the browser: a command opens a connection, the loop holds it, and the
+// stream says so without the page asking.
+func TestTheStreamFollowsTheConnection(t *testing.T) {
+	ts := newTestServer(t)
+	ts.registerPlayer("zero_cool", "a-decent-password")
+
+	stream := ts.openStream()
+	if kind, _ := stream.next(); kind != game.DeltaSnapshot {
+		t.Fatalf("the stream opened with %q", kind)
+	}
+	ts.command("run new")
+	kind, data := stream.next()
+	if kind != game.DeltaRun {
+		t.Fatalf("after `run new` the stream sent %q", kind)
+	}
+	run, _ := data["run"].(map[string]any)
+	if run["connection"] != nil {
+		t.Errorf("a new run is already connected: %v", run["connection"])
+	}
+	if route, ok := run["route"].([]any); !ok || len(route) != 0 {
+		t.Errorf("a new run has a route: %v", run["route"])
+	}
+
+	if out := ts.command("connect 10.0.0.1"); !strings.Contains(out, "Connecting to") {
+		t.Fatalf("connect: %q", out)
+	}
+	kind, data = stream.next()
+	if kind != game.DeltaConnection {
+		t.Fatalf("after `connect` the stream sent %q, want %q", kind, game.DeltaConnection)
+	}
+	if seq, _ := data["seq"].(float64); seq != 3 {
+		t.Errorf("the connection delta is numbered %v, want 3", data["seq"])
+	}
+	conn, ok := data["connection"].(map[string]any)
+	if !ok {
+		t.Fatalf("the delta carries no connection: %v", data)
+	}
+	target, _ := conn["target"].(map[string]any)
+	if target["ip"] != "10.0.0.1" {
+		t.Errorf("connected to %v, want 10.0.0.1", target["ip"])
+	}
+	if conn["state"] != string(game.StateConnecting) {
+		t.Errorf("the connection is %v, want %s", conn["state"], game.StateConnecting)
+	}
+
+	ts.command("disconnect")
+	kind, data = stream.next()
+	if kind != game.DeltaConnection {
+		t.Fatalf("after `disconnect` the stream sent %q", kind)
+	}
+	if data["connection"] != nil {
+		t.Errorf("after disconnecting the stream still reports %v", data["connection"])
 	}
 }
