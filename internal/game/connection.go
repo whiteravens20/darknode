@@ -60,6 +60,9 @@ type Connection struct {
 	// cpuMHz is the processor the programs share. It is taken when the
 	// connection opens: a gateway is not rebuilt mid-connection.
 	cpuMHz int
+	// runID is the run this connection belongs to, for the few things that
+	// outlive the connection and have to be written down.
+	runID int64
 	// opened is when the handshake started, and reported is when the browser
 	// was last told how far the programs had got.
 	opened, reported time.Time
@@ -107,11 +110,12 @@ func (e *Engine) ClearRoute(account int64) {
 }
 
 // Connect opens a connection to the target through the route built so far,
-// with the gateway that will work through it. A connection to a public
-// service is up at once and open; anything else takes the handshake and
-// begins without root.
-func (e *Engine) Connect(account int64, target *world.Server, g store.Gateway) (*Connection, error) {
+// for the given run. A connection to a public service is up at once; anything
+// else takes the handshake. Root the run already won on this server stands:
+// the layers of a connection close with it, root does not.
+func (e *Engine) Connect(account int64, target *world.Server, run *store.Run) (*Connection, error) {
 	now := e.env.Now()
+	g := run.Gateway
 
 	e.mu.Lock()
 	r := e.liveLocked(account)
@@ -135,12 +139,17 @@ func (e *Engine) Connect(account int64, target *world.Server, g store.Gateway) (
 		State:  StateConnecting,
 		open:   map[Layer]bool{},
 		cpuMHz: g.CPUMHz,
+		runID:  run.ID,
 		opened: now,
 	}
 	// A public service answers at once — there is no door to knock on — but
 	// it is not rooted by being read.
 	if target.Type().Public() {
 		conn.State = StateConnected
+	}
+	if run.HasRoot(target.ID) {
+		conn.open[LayerPassword] = true
+		conn.Root = true
 	}
 	r.conn = conn
 	view := conn.view()

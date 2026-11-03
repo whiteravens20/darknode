@@ -66,6 +66,19 @@ type Run struct {
 	Accounts        []BankAccount
 	Software        []Installed
 	Known           []Known
+	// Root are the servers this run holds root on. The layers of a
+	// connection close when it ends; root does not, for the life of the run.
+	Root []string
+}
+
+// HasRoot reports whether the run holds root on the given server.
+func (r *Run) HasRoot(server string) bool {
+	for _, s := range r.Root {
+		if s == server {
+			return true
+		}
+	}
+	return false
 }
 
 // Knows reports whether the run has the address of the given server.
@@ -151,6 +164,15 @@ func (s *Store) ActiveRun(ctx context.Context, accountID int64) (*Run, error) {
 	if err != nil {
 		return nil, err
 	}
+	r.Root, err = collect(ctx, s, "SELECT server FROM run_root WHERE run_id = $1 ORDER BY server", r.ID,
+		func(row pgx.CollectableRow) (string, error) {
+			var server string
+			err := row.Scan(&server)
+			return server, err
+		})
+	if err != nil {
+		return nil, err
+	}
 	r.Known, err = collect(ctx, s, "SELECT server, probed FROM known_server WHERE run_id = $1 ORDER BY server", r.ID,
 		func(row pgx.CollectableRow) (Known, error) {
 			var k Known
@@ -173,6 +195,22 @@ func (s *Store) MarkProbed(ctx context.Context, runID int64, server string) (boo
 		return false, err
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+// GrantRoot records that the run won root on a server. Winning it twice
+// changes nothing, so the first time is the one that counts.
+func (s *Store) GrantRoot(ctx context.Context, runID int64, server string, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO run_root (run_id, server, opened_at) VALUES ($1, $2, $3)
+		ON CONFLICT (run_id, server) DO NOTHING`, runID, server, at)
+	return err
+}
+
+// EndRun closes a run: the trace reached the gateway, or the player is out of
+// the game for another reason. A run ends once.
+func (s *Store) EndRun(ctx context.Context, runID int64, at time.Time) error {
+	_, err := s.pool.Exec(ctx, "UPDATE run SET active = false, ended_at = $2 WHERE id = $1 AND active",
+		runID, at)
+	return err
 }
 
 // AddExposure adds seconds of online time to the active runs of the given accounts.

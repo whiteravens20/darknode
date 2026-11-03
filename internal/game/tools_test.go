@@ -122,7 +122,7 @@ func TestAProgramFinishesInTheLoopAndOpensItsLayer(t *testing.T) {
 	breaker, _ := env.World.SoftwareByID("pass_breaker")
 
 	e.Join(account)
-	if _, err := e.Connect(account, target, run.Gateway); err != nil {
+	if _, err := e.Connect(account, target, run); err != nil {
 		t.Fatal(err)
 	}
 	*now = now.Add(Handshake)
@@ -183,7 +183,7 @@ func TestTwoProgramsEachTakeTwiceAsLong(t *testing.T) {
 	mask, _ := env.World.SoftwareByID("monitor_mask")
 
 	e.Join(account)
-	if _, err := e.Connect(account, target, run.Gateway); err != nil {
+	if _, err := e.Connect(account, target, run); err != nil {
 		t.Fatal(err)
 	}
 	*now = now.Add(Handshake)
@@ -225,7 +225,7 @@ func TestLeavingClosesWhatWasOpened(t *testing.T) {
 	breaker, _ := env.World.SoftwareByID("pass_breaker")
 
 	e.Join(account)
-	if _, err := e.Connect(account, target, run.Gateway); err != nil {
+	if _, err := e.Connect(account, target, run); err != nil {
 		t.Fatal(err)
 	}
 	*now = now.Add(Handshake)
@@ -244,7 +244,7 @@ func TestLeavingClosesWhatWasOpened(t *testing.T) {
 	if _, err := e.Disconnect(account); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Connect(account, target, run.Gateway); err != nil {
+	if _, err := e.Connect(account, target, run); err != nil {
 		t.Fatal(err)
 	}
 	conn := e.Connection(account)
@@ -304,7 +304,7 @@ func TestWhatRootOpens(t *testing.T) {
 	breaker, _ := env.World.SoftwareByID("pass_breaker")
 
 	e.Join(account)
-	if _, err := e.Connect(account, target, run.Gateway); err != nil {
+	if _, err := e.Connect(account, target, run); err != nil {
 		t.Fatal(err)
 	}
 	*now = now.Add(Handshake)
@@ -334,5 +334,80 @@ func TestWhatRootOpens(t *testing.T) {
 	}
 	if out := say(t, env, p, ctx, "status"); !strings.Contains(out, "password open") {
 		t.Errorf("status does not report the open layer:\n%s", out)
+	}
+}
+
+// TestRootLastsForTheRunButTheLayersDoNot is the decision behind working a
+// route out in advance: root won on a server stays for the run, while the
+// proxy and the firewall are the connection's and close with it.
+func TestRootLastsForTheRunButTheLayersDoNot(t *testing.T) {
+	env, now, accounts := engineEnv(t, "agent")
+	e := NewEngine(env, &recorder{}, quietLogger())
+	ctx := context.Background()
+	account := accounts[0]
+	relay, _ := env.World.ServerByID("relay-1") // an ISP relay: password only
+	run, err := env.Store.ActiveRun(ctx, account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	breaker, _ := env.World.SoftwareByID("pass_breaker")
+
+	e.Join(account)
+	if _, err := e.Connect(account, relay, run); err != nil {
+		t.Fatal(err)
+	}
+	*now = now.Add(Handshake)
+	e.tick(ctx, Tick, env.Now())
+	if _, err := e.StartTool(account, run, breaker, 1); err != nil {
+		t.Fatal(err)
+	}
+	// Security 2 at 2000 MHz: four seconds.
+	for range 45 {
+		*now = now.Add(Tick)
+		e.tick(ctx, Tick, env.Now())
+	}
+	if !e.Connection(account).Root {
+		t.Fatal("no root after the program had had its time")
+	}
+
+	// Written down, so it survives the connection.
+	run, err = env.Store.ActiveRun(ctx, account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !run.HasRoot(relay.ID) {
+		t.Fatal("the root won on the relay was not written down for the run")
+	}
+	if _, err := e.Disconnect(account); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Connect(account, relay, run); err != nil {
+		t.Fatal(err)
+	}
+	if conn := e.Connection(account); !conn.Root {
+		t.Error("coming back to a relay it holds root on, the run had to break in again")
+	}
+
+	// The outer layers are not kept: a server with a proxy and a firewall
+	// still has to be opened, root or no root.
+	fort, _ := env.World.ServerByID("fort-main")
+	if err := env.Store.GrantRoot(ctx, run.ID, fort.ID, env.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if run, err = env.Store.ActiveRun(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Disconnect(account); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Connect(account, fort, run); err != nil {
+		t.Fatal(err)
+	}
+	conn := e.Connection(account)
+	if !conn.Root {
+		t.Error("the root written down for this run did not stand")
+	}
+	if conn.open[LayerProxy] || conn.open[LayerFirewall] {
+		t.Error("the proxy or the firewall was kept; those belong to the connection")
 	}
 }

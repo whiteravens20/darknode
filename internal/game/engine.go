@@ -25,6 +25,10 @@ const toolReport = 500 * time.Millisecond
 type finishedTool struct {
 	account int64
 	tool    *running
+	// runID and server say where root was won, when that is what finished.
+	runID  int64
+	server string
+	at     time.Time
 }
 
 // exposureFlush is how often the online time counted in memory is written to
@@ -153,17 +157,33 @@ func (e *Engine) Run(ctx context.Context) {
 			cancel()
 			return
 		case <-ticker.C:
-			e.step(Tick, e.env.Now())
+			e.tick(ctx, Tick, e.env.Now())
 		case <-flush.C:
 			e.flush(ctx)
 		}
 	}
 }
 
-// step advances the simulation by dt and publishes what changed. It touches
-// the database never and the clock once, so a tick costs the same whether one
-// player is online or a hundred.
-func (e *Engine) step(dt time.Duration, now time.Time) {
+// tick advances the simulation by dt and writes down the few things a tick
+// can produce that have to outlive it. The advancing itself is step, which
+// touches no database at all.
+func (e *Engine) tick(ctx context.Context, dt time.Duration, now time.Time) {
+	for _, f := range e.step(dt, now) {
+		if f.tool.Layer != LayerPassword {
+			continue
+		}
+		// Root lasts for the run, so it is the one thing a finished program
+		// leaves behind it.
+		if err := e.env.Store.GrantRoot(ctx, f.runID, f.server, f.at); err != nil && ctx.Err() == nil {
+			e.log.Error("write down root", "run", f.runID, "server", f.server, "err", err)
+		}
+	}
+}
+
+// step advances the simulation by dt, publishes what changed, and returns the
+// programs that finished. It touches the database never and the clock once,
+// so a tick costs the same whether one player is online or a hundred.
+func (e *Engine) step(dt time.Duration, now time.Time) []finishedTool {
 	worldTime := e.env.Clock.Now(now)
 	minute := worldTime.Truncate(time.Minute)
 
@@ -202,7 +222,10 @@ func (e *Engine) step(dt time.Duration, now time.Time) {
 				r.conn.reported = now
 				connected = append(connected, account)
 				for _, t := range finished {
-					done = append(done, finishedTool{account: account, tool: t})
+					done = append(done, finishedTool{
+						account: account, tool: t,
+						runID: r.conn.runID, server: r.conn.Target.ID, at: now,
+					})
 				}
 			} else if len(r.conn.tools) > 0 && now.Sub(r.conn.reported) >= toolReport {
 				r.conn.reported = now
@@ -237,6 +260,7 @@ func (e *Engine) step(dt time.Duration, now time.Time) {
 	if moved && watching > 0 {
 		e.out.Broadcast(DeltaWorld, WorldDelta{WorldTime: minute.UTC()})
 	}
+	return done
 }
 
 // flush writes the counted online time to the database. Accounts that owe the

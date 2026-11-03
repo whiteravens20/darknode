@@ -209,9 +209,13 @@ func TestTheHandshakeFinishesInTheLoop(t *testing.T) {
 	if !ok {
 		t.Fatal("the test world has no bank")
 	}
+	run, err := env.Store.ActiveRun(context.Background(), account)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	e.Join(account)
-	if _, err := e.Connect(account, target, StartGateway); err != nil {
+	if _, err := e.Connect(account, target, run); err != nil {
 		t.Fatal(err)
 	}
 	if conn := e.Connection(account); conn.State != StateConnecting {
@@ -243,9 +247,13 @@ func TestAConnectionOutlivesTheBrowserOnlyForTheGrace(t *testing.T) {
 	e := NewEngine(env, &recorder{}, quietLogger())
 	account := accounts[0]
 	target, _ := env.World.ServerByID("home-bank")
+	run, err := env.Store.ActiveRun(context.Background(), account)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	e.Join(account)
-	if _, err := e.Connect(account, target, StartGateway); err != nil {
+	if _, err := e.Connect(account, target, run); err != nil {
 		t.Fatal(err)
 	}
 	e.Leave(account)

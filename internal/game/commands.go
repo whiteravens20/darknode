@@ -250,6 +250,9 @@ func (e *Env) servers(_ context.Context, c cmd) (Result, error) {
 		if k.Probed {
 			known = fmt.Sprintf("%s, security %d, %s", s.Type(), s.Security, layersText(s))
 		}
+		if c.run.HasRoot(s.ID) {
+			known += " — you hold root here"
+		}
 		out.Lines = append(out.Lines, Line{
 			Text: fmt.Sprintf("  %-16s %-31s %s", s.IP, s.Name, known),
 		})
@@ -446,7 +449,7 @@ func (e *Env) connect(_ context.Context, c cmd) (Result, error) {
 	if target == nil {
 		return out, nil
 	}
-	conn, err := live.Connect(c.p.AccountID, target, c.run.Gateway)
+	conn, err := live.Connect(c.p.AccountID, target, c.run)
 	switch {
 	case errors.Is(err, ErrAlreadyConnected):
 		return errorResult("You are connected to something already. `disconnect` first."), nil
