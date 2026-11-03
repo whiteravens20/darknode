@@ -95,7 +95,7 @@ test('an agent signs up, starts a run, reads it, and comes back to it', async ({
     await command(page, 'connect 10.10.10.10');
     // The status bar follows the connection because the server pushed it, not
     // because the page worked it out.
-    await expect(page.getByTitle('Connection')).toHaveText(/root on InterNIC Registry/);
+    await expect(page.getByTitle('Connection')).toHaveText(/^on InterNIC Registry/);
 
     await command(page, 'links');
     await expect(page.getByText(/THE REGISTER/)).toBeVisible();
@@ -112,6 +112,10 @@ test('an agent signs up, starts a run, reads it, and comes back to it', async ({
     await command(page, 'connect 10.0.0.1');
     await expect(page.getByTitle('Connection')).toHaveText(/^on DarkNode Practice Machine/);
 
+    // Nothing on it can be read yet, and the listing says why.
+    await command(page, 'ls');
+    await expect(page.getByText(/\/readme\.txt\s+1 MB\s+needs root/)).toBeVisible();
+
     await command(page, 'run pass_breaker');
     // The progress comes from the simulation loop, which gives the program a
     // share of the gateway's processor ten times a second.
@@ -125,6 +129,11 @@ test('an agent signs up, starts a run, reads it, and comes back to it', async ({
 
     await command(page, 'status');
     await expect(page.getByText(/Layers\s+password open/)).toBeVisible();
+
+    // With root, the file opens.
+    await command(page, 'cat /readme.txt');
+    await expect(page.getByText(/here to be broken into/)).toBeVisible();
+
     await command(page, 'disconnect');
   });
 
