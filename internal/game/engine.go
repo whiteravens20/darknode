@@ -17,6 +17,16 @@ import (
 // BenchmarkEngineAdvance measures that pass.
 const Tick = 100 * time.Millisecond
 
+// toolReport is how often a browser is told how far the running programs have
+// got. Ten times a second is the simulation's pace, not a progress bar's.
+const toolReport = 500 * time.Millisecond
+
+// finishedTool is a program that came to an end in this tick.
+type finishedTool struct {
+	account int64
+	tool    *running
+}
+
 // exposureFlush is how often the online time counted in memory is written to
 // the database. In between, the loop spares the database a write per player
 // per tick; a crash or a restart loses at most this much of a player's time.
@@ -160,6 +170,7 @@ func (e *Engine) step(dt time.Duration, now time.Time) {
 	// Deltas go out after the lock is given up: the hub takes a lock of its
 	// own, and the loop must never hold two at once.
 	var connected []int64
+	var done []finishedTool
 
 	e.mu.Lock()
 	// An account keeps its entry after its last stream closed until its
@@ -175,8 +186,26 @@ func (e *Engine) step(dt time.Duration, now time.Time) {
 				r.owed += seconds
 				r.part -= time.Duration(seconds) * time.Second
 			}
-			if r.conn != nil && r.conn.State == StateConnecting && now.Sub(r.conn.opened) >= Handshake {
+			if r.conn == nil {
+				continue
+			}
+			if r.conn.State == StateConnecting && now.Sub(r.conn.opened) >= Handshake {
 				r.conn.State = StateConnected
+				r.conn.reported = now
+				connected = append(connected, account)
+				continue
+			}
+			// The programs at work share the gateway's processor. A browser
+			// is told how far they have got a few times a second, and at
+			// once when one of them finishes.
+			if finished := r.conn.advanceTools(dt, r.conn.cpuMHz); len(finished) > 0 {
+				r.conn.reported = now
+				connected = append(connected, account)
+				for _, t := range finished {
+					done = append(done, finishedTool{account: account, tool: t})
+				}
+			} else if len(r.conn.tools) > 0 && now.Sub(r.conn.reported) >= toolReport {
+				r.conn.reported = now
 				connected = append(connected, account)
 			}
 			continue
@@ -200,6 +229,9 @@ func (e *Engine) step(dt time.Duration, now time.Time) {
 
 	for _, account := range connected {
 		e.out.Publish(account, DeltaConnection, ConnectionDelta{Connection: e.ConnectionView(account)})
+	}
+	for _, f := range done {
+		e.log.Info("program finished", "account", f.account, "program", f.tool.Software, "opens", string(f.tool.Layer))
 	}
 	// The clock is the same for everyone, so it goes out once, to everyone.
 	if moved && watching > 0 {

@@ -211,7 +211,7 @@ func TestTheHandshakeFinishesInTheLoop(t *testing.T) {
 	}
 
 	e.Join(account)
-	if _, err := e.Connect(account, target, 2); err != nil {
+	if _, err := e.Connect(account, target, StartGateway); err != nil {
 		t.Fatal(err)
 	}
 	if conn := e.Connection(account); conn.State != StateConnecting {
@@ -245,7 +245,7 @@ func TestAConnectionOutlivesTheBrowserOnlyForTheGrace(t *testing.T) {
 	target, _ := env.World.ServerByID("home-bank")
 
 	e.Join(account)
-	if _, err := e.Connect(account, target, 2); err != nil {
+	if _, err := e.Connect(account, target, StartGateway); err != nil {
 		t.Fatal(err)
 	}
 	e.Leave(account)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/whiteravens20/darknode/internal/legal"
 	"github.com/whiteravens20/darknode/internal/store"
@@ -78,7 +79,9 @@ func init() {
 		{name: "connect", usage: "connect <ip>", summary: "connect to a server through your route", needRun: true, run: (*Env).connect},
 		{name: "disconnect", usage: "disconnect", summary: "close the connection", needConn: true, run: (*Env).disconnect},
 		{name: "links", usage: "links [page]", summary: "read the register (connect to it first)", needConn: true, run: (*Env).links},
-		{name: "run", usage: "run new", summary: "start a new run", run: (*Env).runCmd},
+		{name: "tools", usage: "tools", summary: "the programs on your gateway", needRun: true, run: (*Env).tools},
+		{name: "run", usage: "run new|<program>", summary: "start a run, or set a program to work", run: (*Env).runCmd},
+		{name: "stop", usage: "stop <program>", summary: "stop a program and free the processor", needConn: true, run: (*Env).stop},
 		{name: "about", usage: "about", summary: "licence, source code and credits", run: (*Env).about},
 	}
 }
@@ -198,6 +201,21 @@ func (e *Env) status(ctx context.Context, c cmd) (Result, error) {
 		}
 		lines = append(lines, row("Connection",
 			fmt.Sprintf("%s (%s) — %s, %s", conn.Target.Name, conn.Target.IP, strings.ToLower(conn.State), access)))
+		if len(conn.Layers) > 0 {
+			var layers []string
+			for _, l := range conn.Layers {
+				state := "closed"
+				if l.Open {
+					state = "open"
+				}
+				layers = append(layers, fmt.Sprintf("%s %s", l.Name, state))
+			}
+			lines = append(lines, row("Layers", strings.Join(layers, ", ")))
+		}
+		for _, tool := range conn.Tools {
+			lines = append(lines, row("Running",
+				fmt.Sprintf("%s v%d — %.0f%%, about %.1f s left", tool.Name, tool.Version, tool.Progress*100, tool.Left)))
+		}
 	} else {
 		lines = append(lines, row("Connection", "none"))
 	}
@@ -426,7 +444,7 @@ func (e *Env) connect(_ context.Context, c cmd) (Result, error) {
 	if target == nil {
 		return out, nil
 	}
-	conn, err := live.Connect(c.p.AccountID, target, c.run.Gateway.NICCount)
+	conn, err := live.Connect(c.p.AccountID, target, c.run.Gateway)
 	switch {
 	case errors.Is(err, ErrAlreadyConnected):
 		return errorResult("You are connected to something already. `disconnect` first."), nil
@@ -448,7 +466,8 @@ func (e *Env) connect(_ context.Context, c cmd) (Result, error) {
 		return Result{Lines: lines}, nil
 	}
 	lines = append(lines,
-		Line{Text: fmt.Sprintf("Connected without root. In the way: %s.", layersText(target)), Kind: KindOK})
+		Line{Text: fmt.Sprintf("Connected without root. In the way: %s.", layersText(target)), Kind: KindOK},
+		Line{Text: "  `tools` lists what you can set against it, outermost layer first.", Kind: KindDim})
 	return Result{Lines: lines}, nil
 }
 
@@ -521,21 +540,159 @@ func (e *Env) links(_ context.Context, c cmd) (Result, error) {
 	return out, nil
 }
 
+// newRunWord is the one word `run` does not read as the name of a program.
+// The catalogue is not allowed to name a program after it, so the two uses of
+// `run` can never collide.
+const newRunWord = "new"
+
+func (e *Env) tools(_ context.Context, c cmd) (Result, error) {
+	out := Result{Lines: []Line{{
+		Text: fmt.Sprintf("  %-16s %-20s %s", "PROGRAM", "NAME", "WHAT IT DOES"),
+		Kind: KindHead,
+	}}}
+	for _, i := range c.run.Software {
+		sw, ok := e.World.SoftwareByID(i.Software)
+		if !ok {
+			continue // a program dropped from the catalogue since it was bought
+		}
+		does := sw.Description
+		if layer := toolLayer[sw.ID]; layer != "" {
+			does = fmt.Sprintf("opens the %s layer", layer)
+		}
+		out.Lines = append(out.Lines, Line{
+			Text: fmt.Sprintf("  %-16s %-20s %s", sw.ID, fmt.Sprintf("%s v%d", sw.Name, i.Version), does),
+		})
+	}
+	out.Lines = append(out.Lines,
+		Line{Text: fmt.Sprintf("  At most %d run at once, and they share the processor: two take twice as long each.",
+			maxParallel(c.run.Gateway)), Kind: KindDim},
+		Line{Text: "  `run <program>` sets one to work on the server you are connected to.", Kind: KindDim},
+	)
+	return out, nil
+}
+
 func (e *Env) runCmd(ctx context.Context, c cmd) (Result, error) {
-	if len(c.args) != 1 || strings.ToLower(c.args[0]) != "new" {
-		return errorResult("Usage: run new"), nil
+	if len(c.args) == 0 {
+		return errorResult("Usage: run new, or run <program>"), nil
 	}
-	err := e.StartRun(ctx, c.p)
-	if errors.Is(err, store.ErrRunActive) {
-		return errorResult("You already have an active run."), nil
+	if strings.ToLower(c.args[0]) == newRunWord {
+		if len(c.args) != 1 {
+			return errorResult("Usage: run new"), nil
+		}
+		err := e.StartRun(ctx, c.p)
+		if errors.Is(err, store.ErrRunActive) {
+			return errorResult("You already have an active run."), nil
+		}
+		if err != nil {
+			return Result{}, err
+		}
+		return Result{Changed: true, Lines: []Line{
+			{Text: "New run started. Your gateway is online.", Kind: KindOK},
+			{Text: "Type `status` to see what you have.", Kind: KindDim},
+		}}, nil
 	}
+	return e.runTool(ctx, c)
+}
+
+// runTool sets a program to work on the server the player is connected to.
+// It loads the run and the connection itself, because `run` is also how a run
+// is started and so cannot ask the dispatcher for either.
+func (e *Env) runTool(ctx context.Context, c cmd) (Result, error) {
+	if len(c.args) != 1 {
+		return errorResult("Usage: run <program>"), nil
+	}
+	live, err := e.live()
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Changed: true, Lines: []Line{
-		{Text: "New run started. Your gateway is online.", Kind: KindOK},
-		{Text: "Type `status` to see what you have.", Kind: KindDim},
-	}}, nil
+	run, err := e.Store.ActiveRun(ctx, c.p.AccountID)
+	if err != nil {
+		return Result{}, err
+	}
+	if run == nil {
+		return errorResult("You have no active run. Type `run new` to start one."), nil
+	}
+	id := strings.ToLower(c.args[0])
+	sw, ok := e.World.SoftwareByID(id)
+	if !ok {
+		return errorResult(fmt.Sprintf("No program is called %q. `tools` lists yours.", c.args[0])), nil
+	}
+	version := 0
+	for _, i := range run.Software {
+		if i.Software == sw.ID && i.Version > version {
+			version = i.Version
+		}
+	}
+	if version == 0 {
+		return e.missingTool(sw.ID), nil
+	}
+
+	tool, err := live.StartTool(c.p.AccountID, run, sw, version)
+	switch {
+	case errors.Is(err, ErrNoConnection):
+		return errorResult("You are not connected to anything. Type `connect <ip>`."), nil
+	case errors.Is(err, ErrToolRunning):
+		return errorResult(fmt.Sprintf("%s is already running here.", sw.Name)), nil
+	case errors.Is(err, ErrLayerOpen):
+		return errorResult(fmt.Sprintf("The %s layer is open already.", toolLayer[sw.ID])), nil
+	case errors.Is(err, ErrLayerAbsent):
+		return errorResult(fmt.Sprintf("This server has no %s layer.", toolLayer[sw.ID])), nil
+	case errors.Is(err, ErrLayerOutOfOrder):
+		conn := live.Connection(c.p.AccountID)
+		return errorResult(fmt.Sprintf("Not yet: the %s layer is outside it and still closed.", conn.nextLayer())), nil
+	case errors.Is(err, ErrTooManyTools):
+		return errorResult(fmt.Sprintf("Only %d program(s) fit in this gateway's memory at once.",
+			maxParallel(run.Gateway))), nil
+	case errors.Is(err, ErrNotEnoughCPU):
+		return errorResult(fmt.Sprintf("%s needs a faster processor than this gateway has.", sw.Name)), nil
+	case errors.Is(err, ErrNotEnoughRAM):
+		return errorResult(fmt.Sprintf("%s needs more memory than this gateway has.", sw.Name)), nil
+	case errors.Is(err, ErrToolNotInstalled):
+		return e.missingTool(sw.ID), nil
+	case err != nil:
+		return Result{}, err
+	}
+
+	conn := live.Connection(c.p.AccountID)
+	running := len(conn.tools)
+	left := ToolTime(conn.Target.Security, tool.Version, run.Gateway.CPUMHz, running)
+	lines := []Line{{
+		Text: fmt.Sprintf("%s v%d running against %s — about %s.",
+			sw.Name, tool.Version, conn.Target.Name, roundSeconds(left)),
+		Kind: KindOK,
+	}}
+	if running > 1 {
+		lines = append(lines, Line{
+			Text: fmt.Sprintf("  %d programs share the processor, so each takes %d times as long.", running, running),
+			Kind: KindDim,
+		})
+	}
+	return Result{Lines: lines}, nil
+}
+
+func (e *Env) stop(_ context.Context, c cmd) (Result, error) {
+	if len(c.args) != 1 {
+		return errorResult("Usage: stop <program>"), nil
+	}
+	live, err := e.live()
+	if err != nil {
+		return Result{}, err
+	}
+	id := strings.ToLower(c.args[0])
+	if err := live.StopTool(c.p.AccountID, id); errors.Is(err, ErrToolNotRunning) {
+		return errorResult("That program is not running here."), nil
+	} else if err != nil {
+		return Result{}, err
+	}
+	return Result{Lines: []Line{{
+		Text: "Stopped. What it had done is lost; the processor is free again.",
+		Kind: KindOK,
+	}}}, nil
+}
+
+// roundSeconds writes a duration the way the terminal says it.
+func roundSeconds(d time.Duration) string {
+	return fmt.Sprintf("%.1f s", d.Seconds())
 }
 
 func (e *Env) about(_ context.Context, _ cmd) (Result, error) {

@@ -55,6 +55,26 @@ type ConnectionView struct {
 	Route  []ServerView `json:"route"`
 	State  string       `json:"state"`
 	Root   bool         `json:"root"`
+	// Layers are the target's defences and whether each one is open.
+	Layers []LayerView `json:"layers"`
+	// Tools are the programs at work on the connection.
+	Tools []ToolView `json:"tools"`
+}
+
+// LayerView is one of a server's defences.
+type LayerView struct {
+	Name string `json:"name"`
+	Open bool   `json:"open"`
+}
+
+// ToolView is a program at work, with how far it has got and how long it has
+// left at the share of the processor it is getting now.
+type ToolView struct {
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Version  int     `json:"version"`
+	Progress float64 `json:"progress"`
+	Left     float64 `json:"left_seconds"`
 }
 
 // serverView describes one server to the browser.

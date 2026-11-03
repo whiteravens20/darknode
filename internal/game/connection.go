@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/whiteravens20/darknode/internal/store"
 	"github.com/whiteravens20/darknode/internal/world"
 )
 
@@ -47,8 +48,19 @@ type Connection struct {
 	// Root says whether the player can read what needs root. A public
 	// service is open, so a connection to one has it from the start.
 	Root bool
-	// opened is when the handshake started.
-	opened time.Time
+	// open says which of the target's layers have been opened. They belong
+	// to the connection: leaving closes them again, and coming back means
+	// opening them from the start.
+	open map[Layer]bool
+	// tools are the programs at work on this connection, sharing the
+	// gateway's processor between them.
+	tools []*running
+	// cpuMHz is the processor the programs share. It is taken when the
+	// connection opens: a gateway is not rebuilt mid-connection.
+	cpuMHz int
+	// opened is when the handshake started, and reported is when the browser
+	// was last told how far the programs had got.
+	opened, reported time.Time
 }
 
 // Route returns the relays chosen for the next connection.
@@ -92,10 +104,11 @@ func (e *Engine) ClearRoute(account int64) {
 	}
 }
 
-// Connect opens a connection to the target through the route built so far.
-// A connection to a public service is up at once and open; anything else
-// takes the handshake and begins without root.
-func (e *Engine) Connect(account int64, target *world.Server, maxBounces int) (*Connection, error) {
+// Connect opens a connection to the target through the route built so far,
+// with the gateway that will work through it. A connection to a public
+// service is up at once and open; anything else takes the handshake and
+// begins without root.
+func (e *Engine) Connect(account int64, target *world.Server, g store.Gateway) (*Connection, error) {
 	now := e.env.Now()
 
 	e.mu.Lock()
@@ -104,7 +117,7 @@ func (e *Engine) Connect(account int64, target *world.Server, maxBounces int) (*
 		e.mu.Unlock()
 		return nil, ErrAlreadyConnected
 	}
-	if len(r.route) > maxBounces {
+	if len(r.route) > g.NICCount {
 		e.mu.Unlock()
 		return nil, ErrRouteFull
 	}
@@ -120,7 +133,16 @@ func (e *Engine) Connect(account int64, target *world.Server, maxBounces int) (*
 		Route:  append([]*world.Server(nil), r.route...),
 		State:  StateConnecting,
 		Root:   public,
+		open:   map[Layer]bool{},
+		cpuMHz: g.CPUMHz,
 		opened: now,
+	}
+	if public {
+		// Nothing is in the way of a public service, so nothing has to be
+		// opened: the register is there to be read.
+		for _, layer := range entryLayers {
+			conn.open[layer] = true
+		}
 	}
 	if public {
 		conn.State = StateConnected
@@ -170,7 +192,7 @@ func (e *Engine) ConnectionView(account int64) *ConnectionView {
 	if r == nil || r.conn == nil {
 		return nil
 	}
-	return r.conn.view()
+	return r.conn.viewWithCPU(r.conn.cpuMHz)
 }
 
 // liveLocked returns the account's live state, making it if the account has
@@ -185,13 +207,23 @@ func (e *Engine) liveLocked(account int64) *liveRun {
 	return r
 }
 
-// view is what a browser is told about a connection.
+// view is what a browser is told about a connection. The processor the
+// programs share is the gateway's, which the caller knows; a view built
+// without it still carries everything but the time left.
 func (c *Connection) view() *ConnectionView {
+	return c.viewWithCPU(0)
+}
+
+// viewWithCPU is the view with the time the running programs have left, which
+// depends on the gateway sharing its processor between them.
+func (c *Connection) viewWithCPU(cpuMHz int) *ConnectionView {
 	v := &ConnectionView{
 		Target: serverView(c.Target),
 		State:  string(c.State),
 		Root:   c.Root,
 		Route:  make([]ServerView, 0, len(c.Route)),
+		Layers: c.layerViews(),
+		Tools:  c.toolViews(cpuMHz),
 	}
 	for _, relay := range c.Route {
 		v.Route = append(v.Route, serverView(relay))

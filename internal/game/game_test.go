@@ -23,9 +23,14 @@ func testWorld(t *testing.T) *world.World {
 		"world.yaml": {Data: []byte(`
 epoch: 2049-01-01T00:00:00Z
 start:
-  links: [practice, home-bank, relay-1, relay-2, relay-3, registry]
+  links: [practice, home-bank, relay-1, relay-2, relay-3, registry, fort-main]
   bank: home-bank
-  software: [{ id: pass_breaker, version: 1 }, { id: address_probe, version: 1 }]
+  software:
+    - { id: pass_breaker, version: 1 }
+    - { id: address_probe, version: 1 }
+    - { id: firewall_opener, version: 1 }
+    - { id: proxy_opener, version: 1 }
+    - { id: monitor_mask, version: 1 }
 `)},
 		"software.yaml": {Data: []byte(`
 software:
@@ -37,6 +42,22 @@ software:
     name: AddressProbe
     description: Looks a server up before you connect.
     versions: [{ version: 1, price: 1500, size_mb: 1, cpu_mhz: 0, ram_mb: 0 }]
+  - id: firewall_opener
+    name: FirewallOpener
+    description: Opens the firewall.
+    versions: [{ version: 1, price: 1500, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }]
+  - id: proxy_opener
+    name: ProxyOpener
+    description: Opens the proxy.
+    versions: [{ version: 1, price: 2000, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }]
+  - id: monitor_mask
+    name: MonitorMask
+    description: Hides a connection from a monitor.
+    versions: [{ version: 1, price: 2500, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }]
+  - id: decrypter
+    name: Decrypter
+    description: Heavy on the processor and the memory.
+    versions: [{ version: 1, price: 3000, size_mb: 3, cpu_mhz: 3000, ram_mb: 8192 }]
 `)},
 		"orgs/academy.yaml": {Data: []byte(`
 id: academy
@@ -61,6 +82,22 @@ servers:
   - { id: relay-1, name: Test Relay One, ip: 203.0.113.50, security: 2 }
   - { id: relay-2, name: Test Relay Two, ip: 203.0.113.51, security: 2 }
   - { id: relay-3, name: Test Relay Three, ip: 203.0.113.52, security: 2 }
+`)},
+		"orgs/fort.yaml": {Data: []byte(`
+id: fort
+name: Fort Holdings
+type: CORPORATE
+location: { x: 50, y: 50 }
+servers:
+  - id: fort-main
+    name: Fort Holdings
+    ip: 172.16.0.9
+    security: 2
+    proxy: true
+    firewall: true
+    monitor: true
+    files:
+      - { path: /data/ledger.db, size_mb: 4, sensitive: true, content: The ledger. }
 `)},
 		"orgs/registry.yaml": {Data: []byte(`
 id: registry
@@ -245,7 +282,7 @@ func TestRunNewThenStatusAndServers(t *testing.T) {
 		"Balance     $100 clean, $0 dirty",
 		"CPU 2.0 GHz, RAM 4 GB, modem 100 Mbps, storage 256 GB, 2 NIC, security 1",
 		"PassBreaker v1",
-		"6 known servers",
+		"7 known servers",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status lacks %q:\n%s", want, out)
@@ -283,7 +320,7 @@ func TestSnapshot(t *testing.T) {
 	if s.Run.Balance.Clean != StartBalance || s.Run.Gateway != (GatewayView{2000, 4096, 100, 256000, 2, 1}) {
 		t.Errorf("run view: %+v", s.Run)
 	}
-	if len(s.Run.Software) != 2 || s.Run.Software[0].Name != "AddressProbe" || s.Run.KnownServers != 6 {
+	if len(s.Run.Software) != 5 || s.Run.Software[0].Name != "AddressProbe" || s.Run.KnownServers != 7 {
 		t.Errorf("software %+v, known %d", s.Run.Software, s.Run.KnownServers)
 	}
 }
