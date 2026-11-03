@@ -1,7 +1,7 @@
 // Copyright (C) 2026 White Ravens. AGPL-3.0-only with an additional term; see LICENSE and NOTICE.
 
 import { useCallback, useEffect, useState } from 'react';
-import { ApiError, api, type Registration } from './api';
+import { ApiError, api, type Registration, type RunState } from './api';
 import { SignIn } from './SignIn';
 import { Terminal } from './Terminal';
 import { useStream } from './useStream';
@@ -72,6 +72,9 @@ function StatusBar({
           <span className="text-neutral-300">${run.balance.clean.toLocaleString('en')}</span>
           <span className="text-neutral-500">rep {run.reputation}</span>
           <span className="text-neutral-500">{run.known_servers} links</span>
+          <span title="Connection" className="text-amber-300">
+            {connectionText(run.connection)}
+          </span>
         </>
       ) : (
         <span className="text-neutral-500">no run &mdash; type `run new`</span>
@@ -81,6 +84,14 @@ function StatusBar({
       </span>
     </header>
   );
+}
+
+/** connectionText is what the status bar says about the connection. */
+function connectionText(connection: RunState['connection']): string {
+  if (connection === null) return 'not connected';
+  const where = `${connection.target.name} (${connection.target.ip})`;
+  if (connection.state === 'CONNECTING') return `connecting to ${where}`;
+  return connection.root ? `root on ${where}` : `on ${where}`;
 }
 
 function streamTitle(status: string): string {

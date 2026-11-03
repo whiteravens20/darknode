@@ -39,6 +39,26 @@ export interface WorldDelta {
   world_time: string;
 }
 
+/** ConnectionDelta is where the player is connected, or null once nowhere. */
+export interface ConnectionDelta {
+  seq: number;
+  connection: Connection | null;
+}
+
+/** ServerRef is a server as the player knows it: an address and a name. */
+export interface ServerRef {
+  ip: string;
+  name: string;
+}
+
+/** Connection is the live connection, as the server reports it. */
+export interface Connection {
+  target: ServerRef;
+  route: ServerRef[];
+  state: 'CONNECTING' | 'CONNECTED';
+  root: boolean;
+}
+
 export interface RunState {
   reputation: number;
   exposure_seconds: number;
@@ -53,6 +73,8 @@ export interface RunState {
   };
   software: { id: string; name: string; version: number }[];
   known_servers: number;
+  route: ServerRef[];
+  connection: Connection | null;
 }
 
 /** ApiError carries the server's own message, which is written for the player. */

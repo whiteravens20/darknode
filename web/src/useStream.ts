@@ -1,7 +1,7 @@
 // Copyright (C) 2026 White Ravens. AGPL-3.0-only with an additional term; see LICENSE and NOTICE.
 
 import { useCallback, useEffect, useState } from 'react';
-import type { RunDelta, Snapshot, WorldDelta } from './api';
+import type { ConnectionDelta, RunDelta, Snapshot, WorldDelta } from './api';
 
 export type StreamStatus = 'connecting' | 'live' | 'ended' | 'lost';
 
@@ -65,6 +65,12 @@ export function useStream(signedIn: boolean, onEnded: () => void) {
       const delta = read<WorldDelta>(event);
       if (!inOrder(delta.seq)) return again();
       setSnapshot((s) => (s ? { ...s, world_time: delta.world_time } : s));
+    });
+
+    source.addEventListener('connection', (event) => {
+      const delta = read<ConnectionDelta>(event);
+      if (!inOrder(delta.seq)) return again();
+      setSnapshot((s) => (s?.run ? { ...s, run: { ...s.run, connection: delta.connection } } : s));
     });
 
     // The server could not say what changed, so it asks for a clean start.
