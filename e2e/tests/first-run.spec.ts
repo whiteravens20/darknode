@@ -78,6 +78,33 @@ test('an agent signs up, starts a run, reads it, and comes back to it', async ({
     await expect(page.getByText(/Links\s+\d+ known servers/)).toBeVisible();
   });
 
+  await test.step('a server tells you nothing until it is probed', async () => {
+    await command(page, 'servers');
+    await expect(page.getByText(/172\.16\.10\.1\s+Meridian Savings\s+not probed/)).toBeVisible();
+
+    await command(page, 'probe 172.16.10.1');
+    await expect(page.getByText(/Type\s+BANK/)).toBeVisible();
+    await expect(page.getByText(/Security\s+6/)).toBeVisible();
+    await expect(page.getByText(/Layers\s+proxy \+ firewall \+ password \+ monitor/)).toBeVisible();
+  });
+
+  await test.step('a route is built and the register is read where it stands', async () => {
+    await command(page, 'bounce add 10.0.0.1');
+    await expect(page.getByText(/added to the route/)).toBeVisible();
+
+    await command(page, 'connect 10.10.10.10');
+    // The status bar follows the connection because the server pushed it, not
+    // because the page worked it out.
+    await expect(page.getByTitle('Connection')).toHaveText(/root on InterNIC Registry/);
+
+    await command(page, 'links');
+    await expect(page.getByText(/THE REGISTER/)).toBeVisible();
+    await expect(page.getByText(/Federal Administration/)).toBeVisible();
+
+    await command(page, 'disconnect');
+    await expect(page.getByTitle('Connection')).toHaveText('not connected');
+  });
+
   await test.step('signing out ends the session', async () => {
     await command(page, 'logout');
     await expect(page.getByRole('heading', { name: 'DarkNode', level: 1 })).toBeVisible();
