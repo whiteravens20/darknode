@@ -261,6 +261,35 @@ func (s *Store) WipeLogs(ctx context.Context, runID int64, server string, versio
 	return tag.RowsAffected(), nil
 }
 
+// Spend takes clean money from the run's primary account and reports whether
+// there was enough. A purchase never makes a player poorer than nothing; an
+// obligation can, which is why a fine is not a purchase.
+func (s *Store) Spend(ctx context.Context, runID int64, amount int64) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE bank_account SET balance_clean = balance_clean - $2
+		WHERE run_id = $1 AND is_primary AND balance_clean >= $2`, runID, amount)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+// Credit pays money into the run's primary account. Clean money is what work
+// through the board pays; dirty is what is taken.
+func (s *Store) Credit(ctx context.Context, runID int64, clean, dirty int64) error {
+	_, err := s.pool.Exec(ctx, `UPDATE bank_account
+		SET balance_clean = balance_clean + $2, balance_dirty = balance_dirty + $3
+		WHERE run_id = $1 AND is_primary`, runID, clean, dirty)
+	return err
+}
+
+// InstallSoftware puts a version of a program on the gateway. Owning it twice
+// is owning it once.
+func (s *Store) InstallSoftware(ctx context.Context, runID int64, id string, version int) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO run_software (run_id, software, version)
+		VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, runID, id, version)
+	return err
+}
+
 // GrantRoot records that the run won root on a server. Winning it twice
 // changes nothing, so the first time is the one that counts.
 func (s *Store) GrantRoot(ctx context.Context, runID int64, server string, at time.Time) error {

@@ -38,7 +38,9 @@ software:
   - id: pass_breaker
     name: PassBreaker
     description: A test program.
-    versions: [{ version: 1, price: 1000, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }]
+    versions:
+      - { version: 1, price: 1000, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }
+      - { version: 2, price: 3000, size_mb: 3, cpu_mhz: 0, ram_mb: 0 }
   - id: address_probe
     name: AddressProbe
     description: Looks a server up before you connect.

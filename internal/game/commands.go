@@ -84,6 +84,8 @@ func init() {
 		{name: "ls", usage: "ls", summary: "the files on the server you are on", needConn: true, run: (*Env).ls},
 		{name: "cat", usage: "cat <path>", summary: "read a file", needConn: true, run: (*Env).cat},
 		{name: "tools", usage: "tools", summary: "the programs on your gateway", needRun: true, run: (*Env).tools},
+		{name: "bank", usage: "bank", summary: "your accounts and what is in them", needRun: true, run: (*Env).bank},
+		{name: "shop", usage: "shop [buy …]", summary: "the programs for sale, and buying one", needRun: true, run: (*Env).shop},
 		{name: "run", usage: "run new|<program>", summary: "start a run, or set a program to work", run: (*Env).runCmd},
 		{name: "stop", usage: "stop <program>", summary: "stop a program and free the processor", needConn: true, run: (*Env).stop},
 		{name: "about", usage: "about", summary: "licence, source code and credits", run: (*Env).about},
