@@ -185,6 +185,14 @@ func (s *Store) ActiveRun(ctx context.Context, accountID int64) (*Run, error) {
 	return r, nil
 }
 
+// LearnServer gives the run an address it did not have. Contracts and the
+// files on other machines are how the list grows.
+func (s *Store) LearnServer(ctx context.Context, runID int64, server string) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO known_server (run_id, server) VALUES ($1, $2)
+		ON CONFLICT DO NOTHING`, runID, server)
+	return err
+}
+
 // MarkProbed records that the run has probed the server, which is what makes
 // its type, its security level and its layers visible to the player. It
 // reports whether the run knows that address at all.

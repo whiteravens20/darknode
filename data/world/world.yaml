@@ -12,6 +12,9 @@ start:
     - darknode-help
     - internic
     - meridian-savings
+    # Your own bank's branch terminal. Weak, and the first machine worth
+    # taking something from.
+    - meridian-branch
   # The bank that holds the first account.
   bank: meridian-savings
   # The programs a new gateway comes with.
@@ -22,7 +25,9 @@ start:
     # and at a hundred credits the shop is out of reach, so the first contract
     # would be taken blind.
     - { id: address_probe, version: 1 }
-    # And without a copier the first contract cannot be finished at all: a
-    # file somebody marked sensitive does not come down the line without one.
-    # The shredder is not here on purpose — the first theft pays for it.
+    # And the two programs a contract is done with. The board offers both
+    # kinds of work from the first minute, so a kit that could only do one of
+    # them would strand a new agent on the wrong draw. What the shop is for is
+    # the next layer in: the firewall, the proxy, a faster processor.
     - { id: file_copier, version: 1 }
+    - { id: file_shredder, version: 1 }

@@ -34,3 +34,27 @@ servers:
           Third-quarter audit: passed. One finding, carried over from last
           year: the proxy and the firewall are managed by the same team, so
           one careless change opens both.
+
+  # The branch terminal: the weak point of a bank that is otherwise hard, and
+  # the first machine a new agent can really take. A bank notices quickly,
+  # so taking something from here and leaving the log alone costs money.
+  - id: meridian-branch
+    name: Meridian Savings, Branch Terminal
+    ip: 172.16.10.9
+    security: 2
+    location: { x: 58, y: 33 }
+    files:
+      - path: /pub/opening.txt
+        size_mb: 1
+        content: |
+          Branch hours and the forms you can ask for at the counter.
+      - path: /data/daybook.db
+        size_mb: 3
+        sensitive: true
+        content: |
+          The day's takings, account by account, as the counter entered them.
+      - path: /sys/terminal.cfg
+        size_mb: 1
+        content: |
+          Terminal 11, branch 4. Connected to the main system twice a day,
+          which is also how often anybody looks at this log.

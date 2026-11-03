@@ -289,9 +289,19 @@ func (e *Env) missionAccept(ctx context.Context, c cmd, m store.Mission, all []s
 	if err := e.Store.SetMissionState(ctx, m.ID, store.MissionAccepted, &exposure, &at); err != nil {
 		return Result{}, err
 	}
+	// The contract comes with the address: a client who wants something from
+	// a machine says which machine. This is one of the two ways the list of
+	// addresses grows.
+	if err := e.Store.LearnServer(ctx, c.run.ID, m.Target); err != nil {
+		return Result{}, err
+	}
+	address := ""
+	if s, ok := e.World.ServerByID(m.Target); ok {
+		address = " at " + s.IP.String()
+	}
 	lines := []Line{{
-		Text: fmt.Sprintf("Taken on: %s on %s, for %s. $%s on delivery.",
-			e.missionWork(m), e.serverName(m.Target), m.Client, money(m.Reward)),
+		Text: fmt.Sprintf("Taken on: %s on %s%s, for %s. $%s on delivery.",
+			e.missionWork(m), e.serverName(m.Target), address, m.Client, money(m.Reward)),
 		Kind: KindOK,
 	}}
 	if m.Deadline > 0 {
