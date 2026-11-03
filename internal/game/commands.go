@@ -79,6 +79,8 @@ func init() {
 		{name: "connect", usage: "connect <ip>", summary: "connect to a server through your route", needRun: true, run: (*Env).connect},
 		{name: "disconnect", usage: "disconnect", summary: "close the connection", needConn: true, run: (*Env).disconnect},
 		{name: "links", usage: "links [page]", summary: "read the register (connect to it first)", needConn: true, run: (*Env).links},
+		{name: "ls", usage: "ls", summary: "the files on the server you are on", needConn: true, run: (*Env).ls},
+		{name: "cat", usage: "cat <path>", summary: "read a file", needConn: true, run: (*Env).cat},
 		{name: "tools", usage: "tools", summary: "the programs on your gateway", needRun: true, run: (*Env).tools},
 		{name: "run", usage: "run new|<program>", summary: "start a run, or set a program to work", run: (*Env).runCmd},
 		{name: "stop", usage: "stop <program>", summary: "stop a program and free the processor", needConn: true, run: (*Env).stop},
@@ -460,9 +462,14 @@ func (e *Env) connect(_ context.Context, c cmd) (Result, error) {
 	if len(conn.Route) > 0 {
 		lines = append(lines, Line{Text: "  " + routeText(serverViews(conn.Route)), Kind: KindDim})
 	}
-	if conn.Root {
-		lines = append(lines,
-			Line{Text: "Connected. It is a public service: open to read, and nothing here traces you.", Kind: KindOK})
+	if target.Type().Public() {
+		lines = append(lines, Line{
+			Text: "Connected. It is a public service: what it publishes is open to read, and nothing here traces you.",
+			Kind: KindOK,
+		}, Line{
+			Text: "  What it keeps to itself is still behind root, like anywhere else.",
+			Kind: KindDim,
+		})
 		return Result{Lines: lines}, nil
 	}
 	lines = append(lines,
@@ -491,6 +498,80 @@ func (e *Env) disconnect(_ context.Context, c cmd) (Result, error) {
 		})
 	}
 	return Result{Lines: lines}, nil
+}
+
+// ls and cat are the two things root is for in this milestone: seeing what a
+// server holds, and reading it. A public service is open to read without one,
+// which is what makes the register and the handbook readable from the start.
+
+func (e *Env) ls(_ context.Context, c cmd) (Result, error) {
+	if c.conn.State != StateConnected {
+		return errorResult("The connection is still coming up."), nil
+	}
+	files := c.conn.Target.Files
+	if len(files) == 0 {
+		return Result{Lines: []Line{{Text: "Nothing on this machine.", Kind: KindDim}}}, nil
+	}
+	out := Result{Lines: []Line{{
+		Text: fmt.Sprintf("  %-28s %8s  %s", "PATH", "SIZE", "WHAT IT IS"),
+		Kind: KindHead,
+	}}}
+	for _, f := range files {
+		var marks []string
+		if f.Sensitive {
+			marks = append(marks, "sensitive")
+		}
+		if f.Encrypted {
+			marks = append(marks, "encrypted")
+		}
+		if !e.mayRead(c.conn, f) {
+			marks = append(marks, "needs root")
+		}
+		what := "plain"
+		if len(marks) > 0 {
+			what = strings.Join(marks, ", ")
+		}
+		out.Lines = append(out.Lines, Line{
+			Text: fmt.Sprintf("  %-28s %6d MB  %s", f.Path, f.SizeMB, what),
+		})
+	}
+	return out, nil
+}
+
+func (e *Env) cat(_ context.Context, c cmd) (Result, error) {
+	if len(c.args) != 1 {
+		return errorResult("Usage: cat <path>"), nil
+	}
+	if c.conn.State != StateConnected {
+		return errorResult("The connection is still coming up."), nil
+	}
+	for _, f := range c.conn.Target.Files {
+		if f.Path != c.args[0] {
+			continue
+		}
+		if !e.mayRead(c.conn, f) {
+			return errorResult("Not without root here. Open the password layer first."), nil
+		}
+		if f.Encrypted {
+			return errorResult("The file is encrypted. A Decrypter has to be run against it first."), nil
+		}
+		out := Result{Lines: []Line{{Text: f.Path, Kind: KindHead}}}
+		for _, line := range strings.Split(strings.TrimRight(f.Content, "\n"), "\n") {
+			out.Lines = append(out.Lines, Line{Text: "  " + line})
+		}
+		return out, nil
+	}
+	return errorResult(fmt.Sprintf("No file at %q. `ls` lists what is here.", c.args[0])), nil
+}
+
+// mayRead reports whether the player may read a file on the connection they
+// have. A public service hands out what is not sensitive; everything else
+// needs root, which is what the password layer gives.
+func (e *Env) mayRead(conn *Connection, f world.File) bool {
+	if conn.Root {
+		return true
+	}
+	return conn.Target.Type().Public() && !f.Sensitive
 }
 
 // registerPage is how many organisations one page of the register holds.

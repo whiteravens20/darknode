@@ -255,3 +255,84 @@ func TestLeavingClosesWhatWasOpened(t *testing.T) {
 		t.Error("a new connection carries the programs of the old one")
 	}
 }
+
+// TestReadingNeedsRootUnlessTheServerPublishesIt is the one thing root is for
+// in this milestone. A public service hands out what it publishes and keeps
+// the rest behind root like any other machine, which is why the register can
+// be read from the first minute and its own database cannot.
+func TestReadingNeedsRootUnlessTheServerPublishesIt(t *testing.T) {
+	env, p, ctx := start(t)
+
+	say(t, env, p, ctx, "connect 10.10.10.50") // the public register
+	out := say(t, env, p, ctx, "ls")
+	if !strings.Contains(out, "/pub/about.txt") || !strings.Contains(out, "/data/registry.db") {
+		t.Errorf("ls on the register:\n%s", out)
+	}
+	if !strings.Contains(out, "sensitive, needs root") {
+		t.Errorf("ls does not say what is out of reach:\n%s", out)
+	}
+	if out := say(t, env, p, ctx, "cat /pub/about.txt"); !strings.Contains(out, "public register of every") {
+		t.Errorf("reading what the register publishes:\n%s", out)
+	}
+	if out := say(t, env, p, ctx, "cat /data/registry.db"); !strings.Contains(out, "Not without root") {
+		t.Errorf("the register's own database was handed over:\n%s", out)
+	}
+	if out := say(t, env, p, ctx, "cat /nothing/here"); !strings.Contains(out, "No file at") {
+		t.Errorf("reading a file that is not there:\n%s", out)
+	}
+
+	// Nothing can be read while the connection is still coming up, whatever
+	// it is. A machine that publishes nothing is covered by TestWhatRootOpens,
+	// where the loop finishes the handshake.
+	say(t, env, p, ctx, "disconnect")
+	say(t, env, p, ctx, "connect 10.0.0.1")
+	if out := say(t, env, p, ctx, "ls"); !strings.Contains(out, "still coming up") {
+		t.Errorf("a connection was read mid-handshake:\n%s", out)
+	}
+}
+
+// TestWhatRootOpens finishes the password layer in the loop and then reads the
+// file that needed it, which is the whole of a break-in in this milestone.
+func TestWhatRootOpens(t *testing.T) {
+	env, now, accounts := engineEnv(t, "agent")
+	e := NewEngine(env, &recorder{}, quietLogger())
+	ctx := context.Background()
+	account := accounts[0]
+	p := Player{AccountID: account, Username: "agent"}
+	target, _ := env.World.ServerByID("practice")
+	run, _ := env.Store.ActiveRun(ctx, account)
+	breaker, _ := env.World.SoftwareByID("pass_breaker")
+
+	e.Join(account)
+	if _, err := e.Connect(account, target, run.Gateway); err != nil {
+		t.Fatal(err)
+	}
+	*now = now.Add(Handshake)
+	e.step(Tick, env.Now())
+
+	// Connected, and the machine gives nothing: it publishes nothing.
+	if out := say(t, env, p, ctx, "cat /readme.txt"); !strings.Contains(out, "Not without root") {
+		t.Errorf("a private machine was read without root:\n%s", out)
+	}
+	if out := say(t, env, p, ctx, "ls"); !strings.Contains(out, "needs root") {
+		t.Errorf("ls on a private machine without root:\n%s", out)
+	}
+
+	if _, err := e.StartTool(account, run, breaker, 1); err != nil {
+		t.Fatal(err)
+	}
+	for range 25 {
+		*now = now.Add(Tick)
+		e.step(Tick, env.Now())
+	}
+
+	if out := say(t, env, p, ctx, "cat /readme.txt"); !strings.Contains(out, "Nothing here matters") {
+		t.Errorf("with root, the file is still refused:\n%s", out)
+	}
+	if out := say(t, env, p, ctx, "cat /notes/plans.txt"); !strings.Contains(out, "rather keep") {
+		t.Errorf("with root, the sensitive file is still refused:\n%s", out)
+	}
+	if out := say(t, env, p, ctx, "status"); !strings.Contains(out, "password open") {
+		t.Errorf("status does not report the open layer:\n%s", out)
+	}
+}

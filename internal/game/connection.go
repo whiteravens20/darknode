@@ -45,8 +45,10 @@ type Connection struct {
 	// nearest the gateway to the one nearest the target.
 	Route []*world.Server
 	State ConnState
-	// Root says whether the player can read what needs root. A public
-	// service is open, so a connection to one has it from the start.
+	// Root says whether the password layer has been opened, which is the
+	// only thing that gives root. A public service needs no break-in to
+	// read what it publishes, but what it marks sensitive still sits behind
+	// root like anywhere else.
 	Root bool
 	// open says which of the target's layers have been opened. They belong
 	// to the connection: leaving closes them again, and coming back means
@@ -127,24 +129,17 @@ func (e *Engine) Connect(account int64, target *world.Server, g store.Gateway) (
 			return nil, ErrTargetIsOnTheRoute
 		}
 	}
-	public := target.Type().Public()
 	conn := &Connection{
 		Target: target,
 		Route:  append([]*world.Server(nil), r.route...),
 		State:  StateConnecting,
-		Root:   public,
 		open:   map[Layer]bool{},
 		cpuMHz: g.CPUMHz,
 		opened: now,
 	}
-	if public {
-		// Nothing is in the way of a public service, so nothing has to be
-		// opened: the register is there to be read.
-		for _, layer := range entryLayers {
-			conn.open[layer] = true
-		}
-	}
-	if public {
+	// A public service answers at once — there is no door to knock on — but
+	// it is not rooted by being read.
+	if target.Type().Public() {
 		conn.State = StateConnected
 	}
 	r.conn = conn

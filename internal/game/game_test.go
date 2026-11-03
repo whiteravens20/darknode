@@ -64,7 +64,14 @@ id: academy
 name: Practice Academy
 type: DARKNODE_TEST
 location: { x: 10, y: 10 }
-servers: [{ id: practice, name: Practice Machine, ip: 10.0.0.1, security: 1 }]
+servers:
+  - id: practice
+    name: Practice Machine
+    ip: 10.0.0.1
+    security: 1
+    files:
+      - { path: /readme.txt, size_mb: 1, content: "Nothing here matters.\nTry your programs." }
+      - { path: /notes/plans.txt, size_mb: 2, sensitive: true, content: What the owner would rather keep. }
 `)},
 		"orgs/bank.yaml": {Data: []byte(`
 id: bank
@@ -104,7 +111,14 @@ id: registry
 name: Test Registry
 type: INTERNIC
 location: { x: 40, y: 40 }
-servers: [{ id: registry, name: Test Registry, ip: 10.10.10.50, security: 4 }]
+servers:
+  - id: registry
+    name: Test Registry
+    ip: 10.10.10.50
+    security: 4
+    files:
+      - { path: /pub/about.txt, size_mb: 1, content: The public register of every organisation. }
+      - { path: /data/registry.db, size_mb: 9, sensitive: true, content: The entries nobody paid to publish. }
 `)},
 	})
 	if err != nil {
