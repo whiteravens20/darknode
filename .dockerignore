@@ -13,3 +13,4 @@
 !.env.example
 docker-compose*.yml
 tools
+e2e
