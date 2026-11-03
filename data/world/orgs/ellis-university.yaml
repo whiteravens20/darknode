@@ -27,3 +27,22 @@ servers:
           "On the timing of route reconstruction", Okonkwo and Vance. Shows
           that a reconstruction slows down in proportion to how little each
           intermediate operator is obliged to retain.
+
+  # A machine nobody watches closely, on a network that keeps its logs for a
+  # term and then loses them: a route through here costs a trace real time.
+  - id: ellis-library
+    name: Ellis University, Library Network
+    ip: 192.0.2.11
+    security: 2
+    location: { x: 51, y: 19 }
+    files:
+      - path: /pub/catalogue.txt
+        size_mb: 3
+        content: |
+          The library catalogue. Nine hundred thousand entries, of which the
+          interesting ones are the theses nobody asked to have withdrawn.
+      - path: /sys/proxy.log
+        size_mb: 4
+        content: |
+          Proxy log, this term. Rotated at the end of term, kept nowhere
+          else: the department pays for the disk out of its own budget.

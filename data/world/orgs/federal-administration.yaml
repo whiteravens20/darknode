@@ -1,0 +1,44 @@
+# One of the three servers the game's numbers are balanced against: security 8
+# with a proxy, a firewall and a monitor — the hardest target of the catalogue,
+# and one no starting gateway can take. Break-in time, trace rate and the
+# deadline the administrator sets were all worked out against exactly this
+# configuration, so a change to the security level or to the layers here is a
+# change to the balance of the whole game.
+
+id: federal-administration
+name: Federal Administration
+type: GOVERNMENT
+faction: GOVERNMENT
+location: { x: 20, y: 80 }
+servers:
+  - id: federal-records
+    name: Federal Administration, Records
+    ip: 172.16.30.1
+    security: 8
+    proxy: true
+    firewall: true
+    monitor: true
+    files:
+      - path: /pub/notice.txt
+        size_mb: 1
+        content: |
+          Federal Administration. This system holds the register of persons
+          and the decisions taken about them. Access is logged, reviewed
+          weekly, and referred to the prosecutor where it was not authorised.
+      - path: /register/persons.db
+        size_mb: 40
+        sensitive: true
+        content: |
+          The register of persons: names, addresses, dependants, and every
+          decision an office ever took about them.
+      - path: /register/warrants.db
+        size_mb: 12
+        sensitive: true
+        content: Warrants in force, with the officer who asked for each one.
+      - path: /internal/memo-0441.doc
+        size_mb: 2
+        encrypted: true
+        sensitive: true
+        content: |
+          Memorandum 0441, restricted. On the transfer of the register to the
+          contractor named in annex B, and on what the annex is not to say.

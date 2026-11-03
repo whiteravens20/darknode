@@ -1,3 +1,10 @@
+# One of the three servers the game's numbers are balanced against: security 6
+# with a proxy, a firewall and a monitor. It is also the bank a new agent's
+# first account is held at, so it is read long before it can be broken into.
+# Break-in time, trace rate and the deadline the administrator sets were all
+# worked out against exactly this configuration, so a change to the security
+# level or to the layers here is a change to the balance of the whole game.
+
 id: meridian-savings
 name: Meridian Savings
 type: BANK

@@ -1,3 +1,10 @@
+# One of the three servers the game's numbers are balanced against: security 4
+# with a firewall and a monitor — the first real target a new agent can take,
+# and only with a masked monitor or a route through relays. Break-in time,
+# trace rate and the deadline the administrator sets were all worked out
+# against exactly this configuration, so a change to the security level or to
+# the layers here is a change to the balance of the whole game.
+
 id: halberd-dynamics
 name: Halberd Dynamics
 type: CORPORATE

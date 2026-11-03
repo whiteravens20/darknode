@@ -1,0 +1,39 @@
+# An ISP, which is what makes it useful: its lines carry other people's
+# traffic, it keeps the least of it, and a connection bounced through here
+# costs a trace the most time of any kind of organisation.
+
+id: pell-communications
+name: Pell Communications
+type: ISP
+location: { x: 14, y: 42 }
+servers:
+  - id: pell-relay-east
+    name: Pell Relay East
+    ip: 198.51.100.1
+    security: 2
+    files:
+      - path: /sys/routes.cfg
+        size_mb: 2
+        content: |
+          Routing table, 2,104 entries. Transit for three smaller carriers.
+          Retention: seven days, which is the shortest the licence allows.
+      - path: /sys/peers.txt
+        size_mb: 1
+        content: |
+          Peering: Arcadia Telecom (settlement-free), two regional carriers
+          under contract. Nobody here reads the traffic; nobody is paid to.
+
+  - id: pell-relay-west
+    name: Pell Relay West
+    ip: 198.51.100.2
+    security: 3
+    firewall: true
+    location: { x: 10, y: 48 }
+    files:
+      - path: /sys/routes.cfg
+        size_mb: 2
+        content: Routing table, 1,560 entries. The western half of the network.
+      - path: /data/billing.db
+        size_mb: 8
+        sensitive: true
+        content: Accounts, with the line each one terminates at and what it costs.
