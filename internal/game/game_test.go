@@ -32,6 +32,8 @@ start:
     - { id: proxy_opener, version: 1 }
     - { id: monitor_mask, version: 1 }
     - { id: log_wiper, version: 1 }
+    - { id: file_copier, version: 1 }
+    - { id: file_shredder, version: 1 }
 `)},
 		"software.yaml": {Data: []byte(`
 software:
@@ -57,6 +59,14 @@ software:
     name: MonitorMask
     description: Hides a connection from a monitor.
     versions: [{ version: 1, price: 2500, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }]
+  - id: file_copier
+    name: FileCopier
+    description: Takes a copy of a file somebody marked sensitive.
+    versions: [{ version: 1, price: 800, size_mb: 1, cpu_mhz: 0, ram_mb: 0 }]
+  - id: file_shredder
+    name: FileShredder
+    description: Destroys a file somebody marked sensitive.
+    versions: [{ version: 1, price: 1200, size_mb: 1, cpu_mhz: 0, ram_mb: 0 }]
   - id: log_wiper
     name: LogWiper
     description: Clears the lines you left in a log.
@@ -115,6 +125,14 @@ servers:
     monitor: true
     files:
       - { path: /data/ledger.db, size_mb: 4, sensitive: true, content: The ledger. }
+  - id: fort-annex
+    name: Fort Holdings, Annex
+    ip: 172.16.0.10
+    security: 3
+    firewall: true
+    files:
+      - { path: /pub/notice.txt, size_mb: 1, content: Nothing of interest. }
+      - { path: /data/clients.db, size_mb: 9, sensitive: true, content: "Who pays them, and for what." }
 `)},
 		"orgs/registry.yaml": {Data: []byte(`
 id: registry
@@ -344,7 +362,7 @@ func TestSnapshot(t *testing.T) {
 	if s.Run.Balance.Clean != StartBalance || s.Run.Gateway != (GatewayView{2000, 4096, 100, 256000, 2, 1}) {
 		t.Errorf("run view: %+v", s.Run)
 	}
-	if len(s.Run.Software) != 6 || s.Run.Software[0].Name != "AddressProbe" || s.Run.KnownServers != 7 {
+	if len(s.Run.Software) != 8 || s.Run.Software[0].Name != "AddressProbe" || s.Run.KnownServers != 7 {
 		t.Errorf("software %+v, known %d", s.Run.Software, s.Run.KnownServers)
 	}
 }

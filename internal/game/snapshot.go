@@ -62,6 +62,15 @@ type ConnectionView struct {
 	Layers []LayerView `json:"layers"`
 	// Tools are the programs at work on the connection.
 	Tools []ToolView `json:"tools"`
+	// Transfer is the file coming down the line, or null.
+	Transfer *TransferView `json:"transfer"`
+}
+
+// TransferView is a copy on its way to the gateway.
+type TransferView struct {
+	Path   string  `json:"path"`
+	SizeMB int     `json:"size_mb"`
+	Left   float64 `json:"left_seconds"`
 }
 
 // TraceView is how far a trace has come. Without the TraceMeter the progress

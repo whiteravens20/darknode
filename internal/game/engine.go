@@ -185,7 +185,7 @@ func (e *Engine) Run(ctx context.Context) {
 // run the trace caught. The advancing itself is step, which touches no
 // database at all.
 func (e *Engine) tick(ctx context.Context, dt time.Duration, now time.Time) {
-	finished, busted, dropped := e.step(dt, now)
+	finished, busted, dropped, copied := e.step(dt, now)
 	for _, f := range finished {
 		if f.tool.Layer != LayerPassword {
 			continue
@@ -201,6 +201,25 @@ func (e *Engine) tick(ctx context.Context, dt time.Duration, now time.Time) {
 		}}); err != nil && ctx.Err() == nil {
 			e.log.Error("write down the root in the log", "run", f.runID, "server", f.server, "err", err)
 		}
+	}
+	for _, f := range copied {
+		// The copy is the player's now, and the server writes down that it
+		// was taken.
+		if err := e.env.Store.CopyToGateway(ctx, f.runID, store.GatewayFile{
+			Server: f.server, Path: f.path, SizeMB: f.sizeMB, CopiedAt: f.at,
+		}); err != nil && ctx.Err() == nil {
+			e.log.Error("write down a copied file", "run", f.runID, "path", f.path, "err", err)
+			continue
+		}
+		if err := e.env.Store.AddLogs(ctx, f.runID, []store.LogEntry{{
+			Server: f.server, HopIndex: 0, WorldTime: e.env.Clock.Now(f.at),
+			Action: ActionCopy, Severity: severityOf(ActionCopy, true),
+		}}); err != nil && ctx.Err() == nil {
+			e.log.Error("write down a copy in the log", "run", f.runID, "err", err)
+		}
+		e.out.Publish(f.account, DeltaAlert, AlertDelta{
+			Text: fmt.Sprintf("%s is on your gateway.", f.path), Kind: KindOK,
+		})
 	}
 	for _, d := range dropped {
 		// The player stopped watching and the grace ran out: what they left
@@ -236,6 +255,16 @@ type bustedRun struct {
 	at      time.Time
 }
 
+// copiedFile is a file that finished coming down the line in this tick.
+type copiedFile struct {
+	account int64
+	runID   int64
+	server  string
+	path    string
+	sizeMB  int
+	at      time.Time
+}
+
 // droppedConnection is a connection the grace ran out on. It counts as a
 // disconnect in every way, logs included, so whatever was left in them is
 // now somebody's to read.
@@ -248,7 +277,7 @@ type droppedConnection struct {
 // programs that finished and the runs the trace caught. It touches the
 // database never and the clock once, so a tick costs the same whether one
 // player is online or a hundred.
-func (e *Engine) step(dt time.Duration, now time.Time) ([]finishedTool, []bustedRun, []droppedConnection) {
+func (e *Engine) step(dt time.Duration, now time.Time) ([]finishedTool, []bustedRun, []droppedConnection, []copiedFile) {
 	minute := e.env.Clock.Now(now).Truncate(time.Minute)
 
 	// Deltas go out after the lock is given up: the hub takes a lock of its
@@ -257,6 +286,7 @@ func (e *Engine) step(dt time.Duration, now time.Time) ([]finishedTool, []busted
 	var done []finishedTool
 	var busted []bustedRun
 	var dropped []droppedConnection
+	var copied []copiedFile
 	var alerts []alert
 
 	e.mu.Lock()
@@ -309,9 +339,24 @@ func (e *Engine) step(dt time.Duration, now time.Time) ([]finishedTool, []busted
 						runID: r.conn.runID, server: r.conn.Target.ID, source: source, at: now,
 					})
 				}
-			} else if len(r.conn.tools) > 0 && now.Sub(r.conn.reported) >= liveReport {
+			} else if (len(r.conn.tools) > 0 || r.conn.transfer != nil) &&
+				now.Sub(r.conn.reported) >= liveReport {
 				r.conn.reported = now
 				connected = append(connected, account)
+			}
+			// A file comes down the line on the modem's time, not the
+			// processor's, so it is advanced by the clock alone.
+			if tr := r.conn.transfer; tr != nil {
+				tr.left -= dt
+				if tr.left <= 0 {
+					copied = append(copied, copiedFile{
+						account: account, runID: r.conn.runID, server: r.conn.Target.ID,
+						path: tr.path, sizeMB: tr.sizeMB, at: now,
+					})
+					r.conn.transfer = nil
+					r.conn.reported = now
+					connected = append(connected, account)
+				}
 			}
 		}
 		if r.trace == nil {
@@ -375,7 +420,7 @@ func (e *Engine) step(dt time.Duration, now time.Time) ([]finishedTool, []busted
 	if moved && watching > 0 {
 		e.out.Broadcast(DeltaWorld, WorldDelta{WorldTime: minute.UTC()})
 	}
-	return done, busted, dropped
+	return done, busted, dropped, copied
 }
 
 // alert is a line the game says of its own accord, queued until the lock is

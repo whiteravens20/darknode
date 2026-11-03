@@ -465,3 +465,138 @@ func collect2[T any](ctx context.Context, s *Store, sql string, a, b any, scan p
 	}
 	return pgx.CollectRows(rows, scan)
 }
+
+// GatewayFile is a copy of somebody's file, on the player's own machine.
+type GatewayFile struct {
+	Server   string
+	Path     string
+	SizeMB   int
+	CopiedAt time.Time
+}
+
+// CopyToGateway writes down a copy the player took.
+func (s *Store) CopyToGateway(ctx context.Context, runID int64, f GatewayFile) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO gateway_file (run_id, server, path, size_mb, copied_at)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (run_id, server, path) DO UPDATE SET copied_at = $5`,
+		runID, f.Server, f.Path, f.SizeMB, f.CopiedAt)
+	return err
+}
+
+// GatewayFiles returns what the run has taken, oldest first.
+func (s *Store) GatewayFiles(ctx context.Context, runID int64) ([]GatewayFile, error) {
+	return collect(ctx, s, `SELECT server, path, size_mb, copied_at FROM gateway_file
+		WHERE run_id = $1 ORDER BY copied_at, path`, runID,
+		func(row pgx.CollectableRow) (GatewayFile, error) {
+			var f GatewayFile
+			err := row.Scan(&f.Server, &f.Path, &f.SizeMB, &f.CopiedAt)
+			return f, err
+		})
+}
+
+// DeleteFile writes down that the run destroyed a file on a server.
+func (s *Store) DeleteFile(ctx context.Context, runID int64, server, path string, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `INSERT INTO run_file (run_id, server, path, deleted, deleted_at)
+		VALUES ($1, $2, $3, true, $4)
+		ON CONFLICT (run_id, server, path) DO UPDATE SET deleted = true, deleted_at = $4`,
+		runID, server, path, at)
+	return err
+}
+
+// DeletedFiles returns the paths this run has destroyed on one server.
+func (s *Store) DeletedFiles(ctx context.Context, runID int64, server string) (map[string]time.Time, error) {
+	rows, err := s.pool.Query(ctx, `SELECT path, deleted_at FROM run_file
+		WHERE run_id = $1 AND server = $2 AND deleted`, runID, server)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]time.Time{}
+	for rows.Next() {
+		var path string
+		var at *time.Time
+		if err := rows.Scan(&path, &at); err != nil {
+			return nil, err
+		}
+		if at != nil {
+			out[path] = *at
+		} else {
+			out[path] = time.Time{}
+		}
+	}
+	return out, rows.Err()
+}
+
+// The states a contract passes through.
+const (
+	MissionAvailable = "AVAILABLE"
+	MissionAccepted  = "ACCEPTED"
+	MissionDone      = "DONE"
+	MissionFailed    = "FAILED"
+)
+
+// Mission is one contract, generated for one run from the catalogue.
+type Mission struct {
+	ID                 int64
+	RunID              int64
+	Kind               string
+	Target             string
+	File               string
+	Client             string
+	Difficulty         string
+	Reward             int64
+	ReputationRequired int
+	ReputationGain     int
+	Deadline           int64
+	State              string
+	AcceptedAtExposure *int64
+	// AcceptedAt is when the contract was taken on. What counts as done has
+	// to have happened after it.
+	AcceptedAt *time.Time
+	CreatedAt  time.Time
+}
+
+// AddMissions writes new contracts onto the board.
+func (s *Store) AddMissions(ctx context.Context, missions []Mission) error {
+	for _, m := range missions {
+		if _, err := s.pool.Exec(ctx, `INSERT INTO mission (run_id, kind, target, file, client,
+				difficulty, reward, reputation_required, reputation_gain, deadline, state, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+			m.RunID, m.Kind, m.Target, m.File, m.Client, m.Difficulty, m.Reward,
+			m.ReputationRequired, m.ReputationGain, m.Deadline, m.State, m.CreatedAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// MissionsOfRun returns the run's contracts: what is on the board and what it
+// has taken on, oldest first.
+func (s *Store) MissionsOfRun(ctx context.Context, runID int64) ([]Mission, error) {
+	return collect(ctx, s, `SELECT id, run_id, kind, target, file, client, difficulty, reward,
+			reputation_required, reputation_gain, deadline, state, accepted_at_exposure,
+			accepted_at, created_at
+		FROM mission WHERE run_id = $1 ORDER BY id`, runID,
+		func(row pgx.CollectableRow) (Mission, error) {
+			var m Mission
+			err := row.Scan(&m.ID, &m.RunID, &m.Kind, &m.Target, &m.File, &m.Client, &m.Difficulty,
+				&m.Reward, &m.ReputationRequired, &m.ReputationGain, &m.Deadline, &m.State,
+				&m.AcceptedAtExposure, &m.AcceptedAt, &m.CreatedAt)
+			return m, err
+		})
+}
+
+// SetMissionState moves a contract along: accepted, with the online time and
+// the moment it was taken on, or finished one way or the other.
+func (s *Store) SetMissionState(ctx context.Context, id int64, state string,
+	acceptedExposure *int64, acceptedAt *time.Time) error {
+	_, err := s.pool.Exec(ctx, `UPDATE mission SET state = $2, accepted_at_exposure = $3,
+		accepted_at = $4 WHERE id = $1`, id, state, acceptedExposure, acceptedAt)
+	return err
+}
+
+// AddReputation adds to what the run has earned.
+func (s *Store) AddReputation(ctx context.Context, runID int64, points int) error {
+	_, err := s.pool.Exec(ctx, "UPDATE run SET reputation = reputation + $2 WHERE id = $1", runID, points)
+	return err
+}

@@ -22,3 +22,7 @@ start:
     # and at a hundred credits the shop is out of reach, so the first contract
     # would be taken blind.
     - { id: address_probe, version: 1 }
+    # And without a copier the first contract cannot be finished at all: a
+    # file somebody marked sensitive does not come down the line without one.
+    # The shredder is not here on purpose — the first theft pays for it.
+    - { id: file_copier, version: 1 }

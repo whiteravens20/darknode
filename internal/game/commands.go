@@ -83,6 +83,10 @@ func init() {
 		{name: "log", usage: "log [wipe]", summary: "the lines you left here, and how to clear them", needConn: true, run: (*Env).logCmd},
 		{name: "ls", usage: "ls", summary: "the files on the server you are on", needConn: true, run: (*Env).ls},
 		{name: "cat", usage: "cat <path>", summary: "read a file", needConn: true, run: (*Env).cat},
+		{name: "cp", usage: "cp <path>", summary: "copy a file to your gateway", needConn: true, run: (*Env).cp},
+		{name: "rm", usage: "rm <path>", summary: "destroy a file", needConn: true, run: (*Env).rm},
+		{name: "missions", usage: "missions", summary: "the contracts on the board and yours", needRun: true, run: (*Env).missions},
+		{name: "mission", usage: "mission …", summary: "accept, submit or abandon a contract", needRun: true, run: (*Env).missionCmd},
 		{name: "tools", usage: "tools", summary: "the programs on your gateway", needRun: true, run: (*Env).tools},
 		{name: "bank", usage: "bank", summary: "your accounts and what is in them", needRun: true, run: (*Env).bank},
 		{name: "shop", usage: "shop [buy …]", summary: "the programs for sale, and buying one", needRun: true, run: (*Env).shop},
@@ -224,6 +228,13 @@ func (e *Env) status(ctx context.Context, c cmd) (Result, error) {
 		}
 	} else {
 		lines = append(lines, row("Connection", "none"))
+	}
+	if taken, err := e.gatewayFiles(ctx, c.run); err == nil && len(taken) > 0 {
+		var names []string
+		for _, f := range taken {
+			names = append(names, f.Path)
+		}
+		lines = append(lines, row("On gateway", strings.Join(names, ", ")))
 	}
 	if tr := run.Trace; tr != nil {
 		if tr.Exact {
@@ -533,11 +544,21 @@ func (e *Env) disconnect(ctx context.Context, c cmd) (Result, error) {
 // server holds, and reading it. A public service is open to read without one,
 // which is what makes the register and the handbook readable from the start.
 
-func (e *Env) ls(_ context.Context, c cmd) (Result, error) {
+func (e *Env) ls(ctx context.Context, c cmd) (Result, error) {
 	if c.conn.State != StateConnected {
 		return errorResult("The connection is still coming up."), nil
 	}
-	files := c.conn.Target.Files
+	// What this run destroyed is not there any more, for this run alone.
+	gone, err := e.Store.DeletedFiles(ctx, c.run.ID, c.conn.Target.ID)
+	if err != nil {
+		return Result{}, err
+	}
+	var files []world.File
+	for _, f := range c.conn.Target.Files {
+		if _, deleted := gone[f.Path]; !deleted {
+			files = append(files, f)
+		}
+	}
 	if len(files) == 0 {
 		return Result{Lines: []Line{{Text: "Nothing on this machine.", Kind: KindDim}}}, nil
 	}
@@ -574,9 +595,16 @@ func (e *Env) cat(ctx context.Context, c cmd) (Result, error) {
 	if c.conn.State != StateConnected {
 		return errorResult("The connection is still coming up."), nil
 	}
+	gone, err := e.Store.DeletedFiles(ctx, c.run.ID, c.conn.Target.ID)
+	if err != nil {
+		return Result{}, err
+	}
 	for _, f := range c.conn.Target.Files {
 		if f.Path != c.args[0] {
 			continue
+		}
+		if _, deleted := gone[f.Path]; deleted {
+			break
 		}
 		if !e.mayRead(c.conn, f) {
 			return errorResult("Not without root here. Open the password layer first."), nil

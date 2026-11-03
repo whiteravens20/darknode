@@ -57,6 +57,9 @@ type Connection struct {
 	// tools are the programs at work on this connection, sharing the
 	// gateway's processor between them.
 	tools []*running
+	// transfer is the file coming down the line, or nil. Only one comes at
+	// a time, and the modem decides how long it takes.
+	transfer *transfer
 	// cpuMHz is the processor the programs share. It is taken when the
 	// connection opens: a gateway is not rebuilt mid-connection.
 	cpuMHz int
@@ -236,6 +239,13 @@ func (c *Connection) viewWithCPU(cpuMHz int) *ConnectionView {
 		Route:  make([]ServerView, 0, len(c.Route)),
 		Layers: c.layerViews(),
 		Tools:  c.toolViews(cpuMHz),
+	}
+	if c.transfer != nil {
+		v.Transfer = &TransferView{
+			Path:   c.transfer.path,
+			SizeMB: c.transfer.sizeMB,
+			Left:   c.transfer.left.Round(100 * time.Millisecond).Seconds(),
+		}
 	}
 	for _, relay := range c.Route {
 		v.Route = append(v.Route, serverView(relay))
