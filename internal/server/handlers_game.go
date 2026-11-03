@@ -14,10 +14,16 @@ import (
 
 type commandRequest struct {
 	Line string `json:"line"`
+	// ClientCmdID is the browser's id for this command, so a request it
+	// repeats is answered rather than run again. Optional: a command sent
+	// without one is simply run.
+	ClientCmdID string `json:"client_cmd_id"`
 }
 
 type commandResponse struct {
 	Lines []game.Line `json:"lines"`
+	// Replayed marks an answer that was remembered, not run again.
+	Replayed bool `json:"replayed,omitempty"`
 }
 
 // command runs one terminal line and answers with its output. When the line
@@ -29,9 +35,32 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request, sc sessionConte
 		writeBadRequest(w, err)
 		return
 	}
+	account := sc.player.AccountID
+
+	id := req.ClientCmdID
+	if id != "" {
+		if !validCommandID(id) {
+			writeError(w, http.StatusBadRequest, "invalid", "That command id is not one this server accepts.")
+			return
+		}
+		answer, state := s.commands.reserve(account, id, s.Now())
+		switch state {
+		case commandDone:
+			answer.Replayed = true
+			writeJSON(w, http.StatusOK, answer)
+			return
+		case commandRunning:
+			writeError(w, http.StatusConflict, "in_flight", "That command is still running.")
+			return
+		}
+	}
+
 	result, err := s.Game.Execute(r.Context(), sc.player, req.Line)
 	if err != nil {
-		s.Logger.Error("run command", "account", sc.player.AccountID, "err", err)
+		if id != "" {
+			s.commands.release(account, id) // it did not run; let the browser try again
+		}
+		s.Logger.Error("run command", "account", account, "err", err)
 		writeError(w, http.StatusInternalServerError, "internal", "Something went wrong.")
 		return
 	}
@@ -39,11 +68,14 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request, sc sessionConte
 		s.publishRun(r, sc.player)
 	}
 
-	lines := result.Lines
-	if lines == nil {
-		lines = []game.Line{}
+	answer := commandResponse{Lines: result.Lines}
+	if answer.Lines == nil {
+		answer.Lines = []game.Line{}
 	}
-	writeJSON(w, http.StatusOK, commandResponse{Lines: lines})
+	if id != "" {
+		s.commands.complete(account, id, answer)
+	}
+	writeJSON(w, http.StatusOK, answer)
 }
 
 // publishRun sends the run's state to every stream of the player. When the

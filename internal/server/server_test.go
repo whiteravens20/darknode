@@ -440,6 +440,29 @@ func (s *sseStream) next() (string, map[string]any) {
 	}
 }
 
+// commandWithID runs one line under an id of the caller's choosing and
+// returns the status and the raw answer.
+func (ts *testServer) commandWithID(line, id string) (int, map[string]any) {
+	ts.t.Helper()
+	body, err := json.Marshal(map[string]string{"line": line, "client_cmd_id": id})
+	if err != nil {
+		ts.t.Fatal(err)
+	}
+	return ts.do(http.MethodPost, "/api/cmd", string(body))
+}
+
+// answerText joins the lines of a command's answer.
+func answerText(out map[string]any) string {
+	lines, _ := out["lines"].([]any)
+	var sb strings.Builder
+	for _, l := range lines {
+		m, _ := l.(map[string]any)
+		text, _ := m["text"].(string)
+		sb.WriteString(text + "\n")
+	}
+	return sb.String()
+}
+
 // TestTheStreamOpensWithASnapshotAndThenSendsDeltas is the protocol of §17.1:
 // the whole state once, then only what changed, numbered so a browser can
 // tell that it missed something.
@@ -482,5 +505,59 @@ func TestTheStreamOpensWithASnapshotAndThenSendsDeltas(t *testing.T) {
 	balance, _ := run["balance"].(map[string]any)
 	if clean, _ := balance["clean"].(float64); int64(clean) != game.StartBalance {
 		t.Errorf("the run starts with %v credits, want %d", balance["clean"], game.StartBalance)
+	}
+}
+
+// TestACommandRunsOnceHoweverOftenItIsSent is what the command id is for. The
+// stream is one-way, so a browser whose answer never arrived cannot know
+// whether the command ran; sending it again must not run it twice.
+func TestACommandRunsOnceHoweverOftenItIsSent(t *testing.T) {
+	ts := newTestServer(t)
+	ts.registerPlayer("zero_cool", "a-decent-password")
+
+	status, first := ts.commandWithID("run new", "9f8c1a2b-run-new")
+	if status != http.StatusOK {
+		t.Fatalf("the first attempt: %d %v", status, first)
+	}
+	if !strings.Contains(answerText(first), "New run started") {
+		t.Fatalf("the first attempt did not start a run: %q", answerText(first))
+	}
+	if first["replayed"] != nil {
+		t.Errorf("the first attempt was answered as a repeat: %v", first)
+	}
+
+	status, again := ts.commandWithID("run new", "9f8c1a2b-run-new")
+	if status != http.StatusOK {
+		t.Fatalf("the repeat: %d %v", status, again)
+	}
+	if again["replayed"] != true {
+		t.Errorf("the repeat was not marked as one: %v", again)
+	}
+	if answerText(again) != answerText(first) {
+		t.Errorf("the repeat was answered %q, want the first answer %q", answerText(again), answerText(first))
+	}
+
+	// The same line under a new id is a new command, and the game answers it
+	// as it would any second run: there is already one.
+	status, third := ts.commandWithID("run new", "a-different-id")
+	if status != http.StatusOK {
+		t.Fatalf("the same line under a new id: %d %v", status, third)
+	}
+	if !strings.Contains(answerText(third), "already have an active run") {
+		t.Errorf("a new id answered %q, want the game's refusal of a second run", answerText(third))
+	}
+}
+
+// TestAnImpossibleCommandIDIsRefused keeps the log that remembers answers from
+// being filled with whatever a client makes up.
+func TestAnImpossibleCommandIDIsRefused(t *testing.T) {
+	ts := newTestServer(t)
+	ts.registerPlayer("zero_cool", "a-decent-password")
+
+	for _, id := range []string{strings.Repeat("x", 65), "has a space", "new\nline"} {
+		status, out := ts.commandWithID("status", id)
+		if status != http.StatusBadRequest {
+			t.Errorf("the id %q was answered %d %v, want 400", id, status, out)
+		}
 	}
 }

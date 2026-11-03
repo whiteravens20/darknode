@@ -123,8 +123,16 @@ export const api = {
       body: JSON.stringify({ username, code, password }),
     }),
 
-  command: (line: string) =>
-    request<{ lines: Line[] }>('/api/cmd', { method: 'POST', body: JSON.stringify({ line }) }),
+  /**
+   * command sends one terminal line. The id is this command's own: if the
+   * answer never arrives and the same id is sent again, the server replies
+   * with what the first attempt did instead of running the line twice.
+   */
+  command: (line: string, clientCmdID: string) =>
+    request<{ lines: Line[]; replayed?: boolean }>('/api/cmd', {
+      method: 'POST',
+      body: JSON.stringify({ line, client_cmd_id: clientCmdID }),
+    }),
 };
 
 /**

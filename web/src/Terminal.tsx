@@ -50,7 +50,9 @@ export function Terminal({ onSignedOut }: { onSignedOut: () => void }) {
 
     setBusy(true);
     try {
-      const { lines: out } = await api.command(line);
+      // Each command carries an id of its own, so a request the browser has
+      // to repeat cannot run the line twice.
+      const { lines: out } = await api.command(line, crypto.randomUUID());
       print([...out, { text: '' }]);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {

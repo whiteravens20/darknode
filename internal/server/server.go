@@ -50,6 +50,9 @@ type Server struct {
 	// engine is the simulation: it advances the world and counts the time
 	// players spend online.
 	engine *game.Engine
+	// commands remembers what each command answered, so a browser that
+	// repeats one gets the answer instead of running it twice.
+	commands *commandLog
 }
 
 // New returns a Server.
@@ -66,6 +69,7 @@ func New(o Options) *Server {
 		loginNetBackoff: auth.NewBackoff(10, 30*time.Second, 15*time.Minute),
 		recoverBackoff:  auth.NewBackoff(3, 30*time.Second, 15*time.Minute),
 		hub:             NewHub(5, 5000),
+		commands:        newCommandLog(),
 	}
 	// The hub is how the simulation reaches the browsers, and the only thing
 	// it knows about them.
@@ -96,8 +100,8 @@ func (s *Server) Handler() http.Handler {
 }
 
 // Background runs the server's periodic work until ctx ends: the simulation
-// loop, and the sweeps that forget old rate-limit entries and expired
-// sessions.
+// loop, and the sweeps that forget old rate-limit entries, remembered command
+// answers and expired sessions.
 func (s *Server) Background(ctx context.Context) {
 	go s.engine.Run(ctx)
 
@@ -118,6 +122,7 @@ func (s *Server) Background(ctx context.Context) {
 				b.Prune(now)
 			}
 			s.Puzzle.Prune(now)
+			s.commands.Prune(now)
 		case <-sessions.C:
 			if n, err := s.Store.DeleteExpiredSessions(ctx, s.Now()); err != nil && ctx.Err() == nil {
 				s.Logger.Error("delete expired sessions", "err", err)
