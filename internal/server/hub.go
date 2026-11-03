@@ -6,14 +6,22 @@ import (
 	"bytes"
 	"errors"
 	"sync"
+
+	"github.com/whiteravens20/darknode/internal/game"
 )
 
 // ErrTooManyStreams is returned when an account or the server has as many
 // open streams as it allows.
 var ErrTooManyStreams = errors.New("too many open streams")
 
-// Hub tracks the open state streams, so a change can reach every browser of
-// an account and a sign-out can close its streams.
+// streamQueue is how many deltas wait for one browser. A browser that falls
+// this far behind — a tab the machine suspended, a connection that stopped
+// reading — loses a delta, sees the gap in the numbering and asks for a fresh
+// snapshot. That is cheaper than holding the simulation back for it.
+const streamQueue = 32
+
+// Hub tracks the open state streams. It is also the game's Publisher: the
+// simulation hands it deltas, and it numbers and queues them per stream.
 type Hub struct {
 	maxPerAccount, maxTotal int
 
@@ -25,12 +33,20 @@ type Hub struct {
 type subscriber struct {
 	account   int64
 	tokenHash []byte
-	// changed is signalled when the account's state changed; one pending
-	// signal is enough, so it has room for one.
-	changed chan struct{}
+	// events carries the deltas waiting to be written to this stream.
+	events chan streamEvent
+	// seq is the number of the last delta meant for this stream, delivered
+	// or dropped. The hub holds the lock when it touches this.
+	seq uint64
 	// closed is closed when the stream must end.
 	closed chan struct{}
 	once   sync.Once
+}
+
+// streamEvent is one numbered delta on its way to one browser.
+type streamEvent struct {
+	kind  string
+	delta game.Delta
 }
 
 func (sub *subscriber) close() { sub.once.Do(func() { close(sub.closed) }) }
@@ -41,7 +57,9 @@ func NewHub(maxPerAccount, maxTotal int) *Hub {
 	return &Hub{maxPerAccount: maxPerAccount, maxTotal: maxTotal, byAccount: map[int64]map[*subscriber]struct{}{}}
 }
 
-// Subscribe registers a stream of the session with tokenHash.
+// Subscribe registers a stream of the session with tokenHash. Number one of
+// the sequence is reserved for the snapshot the handler sends first, so a
+// delta published before it was written still comes after it.
 func (h *Hub) Subscribe(account int64, tokenHash []byte) (*subscriber, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -51,7 +69,8 @@ func (h *Hub) Subscribe(account int64, tokenHash []byte) (*subscriber, error) {
 	sub := &subscriber{
 		account:   account,
 		tokenHash: tokenHash,
-		changed:   make(chan struct{}, 1),
+		events:    make(chan streamEvent, streamQueue),
+		seq:       1,
 		closed:    make(chan struct{}),
 	}
 	if h.byAccount[account] == nil {
@@ -77,15 +96,37 @@ func (h *Hub) Unsubscribe(sub *subscriber) {
 	h.total--
 }
 
-// Notify tells every stream of the account that its state changed.
-func (h *Hub) Notify(account int64) {
+// Publish sends one delta to every stream of the account.
+func (h *Hub) Publish(account int64, kind string, d game.Delta) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for sub := range h.byAccount[account] {
-		select {
-		case sub.changed <- struct{}{}:
-		default: // a signal is already pending
+		h.deliver(sub, kind, d)
+	}
+}
+
+// Broadcast sends one delta to every open stream.
+func (h *Hub) Broadcast(kind string, d game.Delta) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, subs := range h.byAccount {
+		for sub := range subs {
+			h.deliver(sub, kind, d)
 		}
+	}
+}
+
+// deliver numbers the delta for one stream and queues it. The caller holds
+// the lock.
+//
+// A queue with no room spends the number without delivering anything: the
+// next delta the browser does receive is out of sequence, which is how it
+// learns that what it holds is no longer the server's state.
+func (h *Hub) deliver(sub *subscriber, kind string, d game.Delta) {
+	sub.seq++
+	select {
+	case sub.events <- streamEvent{kind: kind, delta: d.WithSeq(sub.seq)}:
+	default:
 	}
 }
 
@@ -120,15 +161,4 @@ func (h *Hub) CloseAll() {
 			sub.close()
 		}
 	}
-}
-
-// Online returns the accounts with at least one open stream.
-func (h *Hub) Online() []int64 {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	out := make([]int64, 0, len(h.byAccount))
-	for account := range h.byAccount {
-		out = append(out, account)
-	}
-	return out
 }

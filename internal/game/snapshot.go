@@ -8,12 +8,17 @@ import (
 )
 
 // Snapshot is the whole state the client is shown, sent when its stream opens
-// and again whenever the state changes.
+// and after a resync. Everything that happens afterwards reaches the browser
+// as a delta.
 type Snapshot struct {
+	Seq       uint64      `json:"seq"`
 	Account   AccountView `json:"account"`
 	WorldTime time.Time   `json:"world_time"`
 	Run       *RunView    `json:"run"`
 }
+
+// WithSeq returns a copy of the snapshot numbered seq.
+func (s Snapshot) WithSeq(seq uint64) Delta { s.Seq = seq; return s }
 
 // AccountView is the signed-in account.
 type AccountView struct {
@@ -59,9 +64,20 @@ func (e *Env) Snapshot(ctx context.Context, p Player) (Snapshot, error) {
 		Account:   AccountView{Username: p.Username},
 		WorldTime: e.Clock.Now(e.Now()).UTC(),
 	}
+	run, err := e.RunState(ctx, p)
+	if err != nil {
+		return s, err
+	}
+	s.Run = run
+	return s, nil
+}
+
+// RunState builds the view of the player's active run, or nil when there is
+// none. It is what a run delta carries, and part of a snapshot.
+func (e *Env) RunState(ctx context.Context, p Player) (*RunView, error) {
 	r, err := e.Store.ActiveRun(ctx, p.AccountID)
 	if err != nil || r == nil {
-		return s, err
+		return nil, err
 	}
 	v := &RunView{
 		Reputation:      r.Reputation,
@@ -85,6 +101,5 @@ func (e *Env) Snapshot(ctx context.Context, p Player) (Snapshot, error) {
 		}
 		v.Software = append(v.Software, SoftwareView{ID: i.Software, Name: name, Version: i.Version})
 	}
-	s.Run = v
-	return s, nil
+	return v, nil
 }

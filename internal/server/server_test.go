@@ -3,6 +3,7 @@
 package server_test
 
 import (
+	"bufio"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -367,5 +368,119 @@ func TestBadBodiesAreRefused(t *testing.T) {
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("%s: %d, want 400", name, resp.StatusCode)
 		}
+	}
+}
+
+// sseStream is an open state stream the test reads event by event.
+type sseStream struct {
+	t     *testing.T
+	lines *bufio.Reader
+}
+
+// openStream opens the signed-in player's state stream.
+func (ts *testServer) openStream() *sseStream {
+	ts.t.Helper()
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/stream", nil)
+	if err != nil {
+		ts.t.Fatal(err)
+	}
+	resp, err := ts.http.Do(req)
+	if err != nil {
+		ts.t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		ts.t.Fatalf("open the stream: %d", resp.StatusCode)
+	}
+	ts.t.Cleanup(func() { resp.Body.Close() })
+	return &sseStream{t: ts.t, lines: bufio.NewReader(resp.Body)}
+}
+
+// next returns the next event of the stream: its name and its decoded data.
+// A stream that says nothing fails the test rather than hanging it.
+func (s *sseStream) next() (string, map[string]any) {
+	s.t.Helper()
+	type event struct {
+		kind string
+		data map[string]any
+	}
+	read := make(chan event, 1)
+	go func() {
+		kind := ""
+		for {
+			line, err := s.lines.ReadString('\n')
+			if err != nil {
+				close(read)
+				return
+			}
+			line = strings.TrimRight(line, "\n")
+			switch {
+			case strings.HasPrefix(line, "event: "):
+				kind = strings.TrimPrefix(line, "event: ")
+			case strings.HasPrefix(line, "data: "):
+				data := map[string]any{}
+				if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &data); err != nil {
+					close(read)
+					return
+				}
+				read <- event{kind: kind, data: data}
+				return
+			}
+		}
+	}()
+	select {
+	case ev, ok := <-read:
+		if !ok {
+			s.t.Fatal("the stream ended without an event")
+		}
+		return ev.kind, ev.data
+	case <-time.After(5 * time.Second):
+		s.t.Fatal("no event arrived on the stream within five seconds")
+		return "", nil
+	}
+}
+
+// TestTheStreamOpensWithASnapshotAndThenSendsDeltas is the protocol of §17.1:
+// the whole state once, then only what changed, numbered so a browser can
+// tell that it missed something.
+func TestTheStreamOpensWithASnapshotAndThenSendsDeltas(t *testing.T) {
+	ts := newTestServer(t)
+	ts.registerPlayer("zero_cool", "a-decent-password")
+
+	stream := ts.openStream()
+	kind, data := stream.next()
+	if kind != game.DeltaSnapshot {
+		t.Fatalf("the stream opened with a %q event, want %q", kind, game.DeltaSnapshot)
+	}
+	if seq, _ := data["seq"].(float64); seq != 1 {
+		t.Errorf("the snapshot is numbered %v, want 1", data["seq"])
+	}
+	if account, _ := data["account"].(map[string]any); account["username"] != "zero_cool" {
+		t.Errorf("the snapshot is for %v, want zero_cool", account["username"])
+	}
+	if data["run"] != nil {
+		t.Errorf("a new account already has a run: %v", data["run"])
+	}
+	if _, ok := data["world_time"].(string); !ok {
+		t.Errorf("the snapshot carries no world time: %v", data)
+	}
+
+	// Starting a run changes the state, so what follows is a run delta — not
+	// another snapshot, and not nothing.
+	ts.command("run new")
+	kind, data = stream.next()
+	if kind != game.DeltaRun {
+		t.Fatalf("after `run new` the stream sent a %q event, want %q", kind, game.DeltaRun)
+	}
+	if seq, _ := data["seq"].(float64); seq != 2 {
+		t.Errorf("the delta is numbered %v, want 2: it follows the snapshot", data["seq"])
+	}
+	run, ok := data["run"].(map[string]any)
+	if !ok {
+		t.Fatalf("the run delta carries no run: %v", data)
+	}
+	balance, _ := run["balance"].(map[string]any)
+	if clean, _ := balance["clean"].(float64); int64(clean) != game.StartBalance {
+		t.Errorf("the run starts with %v credits, want %d", balance["clean"], game.StartBalance)
 	}
 }

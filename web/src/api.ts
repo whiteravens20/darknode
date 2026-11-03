@@ -15,10 +15,28 @@ export interface Line {
   kind?: '' | 'head' | 'dim' | 'ok' | 'error';
 }
 
+/**
+ * Snapshot is the whole state, sent when the stream opens. Everything after
+ * it arrives as a delta that names only what changed; `seq` numbers them all,
+ * so a missing one is visible.
+ */
 export interface Snapshot {
+  seq: number;
   account: { username: string };
   world_time: string;
   run: RunState | null;
+}
+
+/** RunDelta is the run's state after something changed it. */
+export interface RunDelta {
+  seq: number;
+  run: RunState | null;
+}
+
+/** WorldDelta is the clock the whole instance shares. */
+export interface WorldDelta {
+  seq: number;
+  world_time: string;
 }
 
 export interface RunState {

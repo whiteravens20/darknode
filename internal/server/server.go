@@ -47,6 +47,9 @@ type Server struct {
 	loginBackoff, loginNetBackoff, recoverBackoff *auth.Backoff
 
 	hub *Hub
+	// engine is the simulation: it advances the world and counts the time
+	// players spend online.
+	engine *game.Engine
 }
 
 // New returns a Server.
@@ -54,7 +57,7 @@ func New(o Options) *Server {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	return &Server{
+	s := &Server{
 		Options:         o,
 		regHour:         auth.NewWindow(3, time.Hour),
 		regDay:          auth.NewWindow(10, 24*time.Hour),
@@ -64,6 +67,10 @@ func New(o Options) *Server {
 		recoverBackoff:  auth.NewBackoff(3, 30*time.Second, 15*time.Minute),
 		hub:             NewHub(5, 5000),
 	}
+	// The hub is how the simulation reaches the browsers, and the only thing
+	// it knows about them.
+	s.engine = game.NewEngine(o.Game, s.hub, o.Logger)
+	return s
 }
 
 // Handler returns the server's routes.
@@ -88,23 +95,20 @@ func (s *Server) Handler() http.Handler {
 	return s.recoverPanics(s.securityHeaders(s.sameOrigin(mux)))
 }
 
-// Background runs the server's periodic work until ctx ends: it forgets old
-// rate-limit entries and expired sessions, and counts online time.
+// Background runs the server's periodic work until ctx ends: the simulation
+// loop, and the sweeps that forget old rate-limit entries and expired
+// sessions.
 func (s *Server) Background(ctx context.Context) {
-	exposure := time.NewTicker(exposureTick)
+	go s.engine.Run(ctx)
+
 	prune := time.NewTicker(time.Minute)
 	sessions := time.NewTicker(time.Hour)
-	defer exposure.Stop()
 	defer prune.Stop()
 	defer sessions.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-exposure.C:
-			if err := s.Store.AddExposure(ctx, s.hub.Online(), int64(exposureTick/time.Second)); err != nil && ctx.Err() == nil {
-				s.Logger.Error("count online time", "err", err)
-			}
 		case <-prune.C:
 			now := s.Now()
 			for _, w := range []*auth.Window{s.regHour, s.regDay, s.regGlobal} {
@@ -126,10 +130,6 @@ func (s *Server) Background(ctx context.Context) {
 
 // CloseStreams ends every open state stream, for a shutdown.
 func (s *Server) CloseStreams() { s.hub.CloseAll() }
-
-// exposureTick is how often online time is added to the runs of players
-// whose stream is open.
-const exposureTick = 5 * time.Second
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)

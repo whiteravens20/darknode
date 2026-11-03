@@ -62,7 +62,11 @@ function StatusBar({
     <header className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-neutral-800 px-4 py-2 font-mono text-xs">
       <span className="font-semibold text-emerald-400">DarkNode</span>
       <span className="text-neutral-300">{username}</span>
-      {snapshot && <span className="text-neutral-500">{formatWorldTime(snapshot.world_time)}</span>}
+      {snapshot && (
+        <span title="World time" className="text-neutral-500">
+          {formatWorldTime(snapshot.world_time)}
+        </span>
+      )}
       {run ? (
         <>
           <span className="text-neutral-300">${run.balance.clean.toLocaleString('en')}</span>

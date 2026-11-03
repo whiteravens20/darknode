@@ -21,8 +21,8 @@ type commandResponse struct {
 }
 
 // command runs one terminal line and answers with its output. When the line
-// changed the player's state, every stream of that account is told to send a
-// fresh snapshot.
+// changed the player's state, every stream of that account is sent the run's
+// new state; the answer carries the words, the stream carries the state.
 func (s *Server) command(w http.ResponseWriter, r *http.Request, sc sessionContext) {
 	var req commandRequest
 	if err := readJSON(w, r, &req); err != nil {
@@ -36,8 +36,9 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request, sc sessionConte
 		return
 	}
 	if result.Changed {
-		s.hub.Notify(sc.player.AccountID)
+		s.publishRun(r, sc.player)
 	}
+
 	lines := result.Lines
 	if lines == nil {
 		lines = []game.Line{}
@@ -45,12 +46,26 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request, sc sessionConte
 	writeJSON(w, http.StatusOK, commandResponse{Lines: lines})
 }
 
+// publishRun sends the run's state to every stream of the player. When the
+// state cannot be read, the streams are told to open again instead: a browser
+// showing a state the server has moved past is worse than a reconnect.
+func (s *Server) publishRun(r *http.Request, p game.Player) {
+	run, err := s.Game.RunState(r.Context(), p)
+	if err != nil {
+		s.Logger.Error("build run state", "account", p.AccountID, "err", err)
+		s.hub.Publish(p.AccountID, game.DeltaResync, game.ResyncDelta{})
+		return
+	}
+	s.hub.Publish(p.AccountID, game.DeltaRun, game.RunDelta{Run: run})
+}
+
 // streamPing is how often a comment is sent to keep the connection open
 // through proxies that close an idle one.
 const streamPing = 25 * time.Second
 
 // stream sends the player's state as server-sent events: a snapshot when the
-// stream opens, and another whenever the state changes.
+// stream opens, and a delta for everything that happens afterwards. Each
+// event is numbered, so a browser that misses one can tell.
 func (s *Server) stream(w http.ResponseWriter, r *http.Request, sc sessionContext) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -69,6 +84,11 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request, sc sessionContex
 	}
 	defer s.hub.Unsubscribe(sub)
 
+	// An open stream is what being online means, and online time is what the
+	// game judges a run by, so the simulation is told either way.
+	s.engine.Join(sc.player.AccountID)
+	defer s.engine.Leave(sc.player.AccountID)
+
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-store")
@@ -78,27 +98,31 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request, sc sessionContex
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	send := func() bool {
-		snap, err := s.Game.Snapshot(r.Context(), sc.player)
+	write := func(kind string, payload any) bool {
+		body, err := json.Marshal(payload)
 		if err != nil {
-			s.Logger.Error("build snapshot", "account", sc.player.AccountID, "err", err)
+			s.Logger.Error("encode delta", "kind", kind, "err", err)
 			return false
 		}
-		body, err := json.Marshal(snap)
-		if err != nil {
-			s.Logger.Error("encode snapshot", "err", err)
-			return false
-		}
-		if _, err := fmt.Fprintf(w, "event: state\ndata: %s\n\n", body); err != nil {
+		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", kind, body); err != nil {
 			return false
 		}
 		flusher.Flush()
 		return true
 	}
 
-	if !send() {
+	// The snapshot is number one of this stream's sequence; everything the
+	// hub queued while it was being built comes after it.
+	snap, err := s.Game.Snapshot(r.Context(), sc.player)
+	if err != nil {
+		s.Logger.Error("build snapshot", "account", sc.player.AccountID, "err", err)
 		return
 	}
+	snap.Seq = 1
+	if !write(game.DeltaSnapshot, snap) {
+		return
+	}
+
 	ping := time.NewTicker(streamPing)
 	defer ping.Stop()
 	for {
@@ -106,12 +130,11 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request, sc sessionContex
 		case <-r.Context().Done():
 			return
 		case <-sub.closed:
-			// The session ended elsewhere: sign-out, or recovery.
-			fmt.Fprint(w, "event: ended\ndata: {}\n\n")
-			flusher.Flush()
+			// The session ended elsewhere: a sign-out, or a recovery.
+			write(game.DeltaEnded, struct{}{})
 			return
-		case <-sub.changed:
-			if !send() {
+		case ev := <-sub.events:
+			if !write(ev.kind, ev.delta) {
 				return
 			}
 		case <-ping.C:
