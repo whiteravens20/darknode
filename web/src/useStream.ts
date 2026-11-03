@@ -1,7 +1,14 @@
 // Copyright (C) 2026 White Ravens. AGPL-3.0-only with an additional term; see LICENSE and NOTICE.
 
 import { useCallback, useEffect, useState } from 'react';
-import type { ConnectionDelta, RunDelta, Snapshot, WorldDelta } from './api';
+import type {
+  AlertDelta,
+  ConnectionDelta,
+  RunDelta,
+  Snapshot,
+  TraceDelta,
+  WorldDelta,
+} from './api';
 
 export type StreamStatus = 'connecting' | 'live' | 'ended' | 'lost';
 
@@ -19,6 +26,8 @@ export type StreamStatus = 'connecting' | 'live' | 'ended' | 'lost';
 export function useStream(signedIn: boolean, onEnded: () => void) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [status, setStatus] = useState<StreamStatus>('connecting');
+  // What the game said of its own accord, for the terminal to print.
+  const [alerts, setAlerts] = useState<AlertDelta[]>([]);
   // Bumped to open the stream again from the beginning.
   const [generation, setGeneration] = useState(0);
   const resync = useCallback(() => setGeneration((n) => n + 1), []);
@@ -73,6 +82,20 @@ export function useStream(signedIn: boolean, onEnded: () => void) {
       setSnapshot((s) => (s?.run ? { ...s, run: { ...s.run, connection: delta.connection } } : s));
     });
 
+    source.addEventListener('trace', (event) => {
+      const delta = read<TraceDelta>(event);
+      if (!inOrder(delta.seq)) return again();
+      setSnapshot((s) => (s?.run ? { ...s, run: { ...s.run, trace: delta.trace } } : s));
+    });
+
+    // Something happened without the player asking: an administrator closing
+    // a layer, a connection cut, a run ended.
+    source.addEventListener('alert', (event) => {
+      const delta = read<AlertDelta>(event);
+      if (!inOrder(delta.seq)) return again();
+      setAlerts((all) => [...all, delta]);
+    });
+
     // The server could not say what changed, so it asks for a clean start.
     source.addEventListener('resync', () => again());
 
@@ -95,5 +118,5 @@ export function useStream(signedIn: boolean, onEnded: () => void) {
     };
   }, [signedIn, onEnded, resync, generation]);
 
-  return { snapshot, status };
+  return { snapshot, status, alerts };
 }

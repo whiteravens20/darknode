@@ -1,7 +1,7 @@
 // Copyright (C) 2026 White Ravens. AGPL-3.0-only with an additional term; see LICENSE and NOTICE.
 
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, api, type Line } from './api';
+import { ApiError, api, type AlertDelta, type Line } from './api';
 
 const WELCOME: Line[] = [
   { text: 'DarkNode', kind: 'head' },
@@ -19,7 +19,13 @@ const kindClass: Record<string, string> = {
 /** Commands the terminal answers itself, without asking the server. */
 const CLIENT_COMMANDS = new Set(['clear', 'history', 'logout']);
 
-export function Terminal({ onSignedOut }: { onSignedOut: () => void }) {
+export function Terminal({
+  onSignedOut,
+  alerts,
+}: {
+  onSignedOut: () => void;
+  alerts: AlertDelta[];
+}) {
   const [lines, setLines] = useState<Line[]>(WELCOME);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -31,6 +37,20 @@ export function Terminal({ onSignedOut }: { onSignedOut: () => void }) {
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: 'end' });
   }, [lines]);
+
+  // The game says things without being asked — an administrator closing a
+  // layer, a connection cut. Each one is printed once, in the order it came.
+  const printed = useRef(0);
+  useEffect(() => {
+    const fresh = alerts.filter((a) => a.seq > printed.current);
+    if (fresh.length === 0) return;
+    printed.current = fresh[fresh.length - 1]?.seq ?? printed.current;
+    setLines((all) => [
+      ...all,
+      ...fresh.map((a): Line => (a.kind ? { text: a.text, kind: a.kind } : { text: a.text })),
+      { text: '' },
+    ]);
+  }, [alerts]);
 
   const print = (more: Line[]) => setLines((all) => [...all, ...more]);
 

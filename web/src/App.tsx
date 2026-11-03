@@ -33,7 +33,7 @@ export function App() {
   }, []);
 
   const signedOut = useCallback(() => setUsername(null), []);
-  const { snapshot, status } = useStream(username !== null, signedOut);
+  const { snapshot, status, alerts } = useStream(username !== null, signedOut);
 
   if (!ready) return <div className="p-6 font-mono text-sm text-neutral-500">Loading…</div>;
   if (username === null) {
@@ -43,7 +43,7 @@ export function App() {
   return (
     <div className="flex h-screen flex-col bg-neutral-950 text-neutral-200">
       <StatusBar username={username} snapshot={snapshot} status={status} />
-      <Terminal onSignedOut={signedOut} />
+      <Terminal onSignedOut={signedOut} alerts={alerts} />
     </div>
   );
 }
@@ -75,6 +75,11 @@ function StatusBar({
           <span title="Connection" className="text-amber-300">
             {connectionText(run.connection)}
           </span>
+          {run.trace && (
+            <span title="Trace" className="text-rose-400">
+              {traceText(run.trace)}
+            </span>
+          )}
           {run.connection && run.connection.tools.length > 0 && (
             <span title="Running programs" className="text-neutral-400">
               {run.connection.tools
@@ -91,6 +96,13 @@ function StatusBar({
       </span>
     </header>
   );
+}
+
+/** traceText is what the status bar says about the trace. */
+function traceText(trace: NonNullable<RunState['trace']>): string {
+  const percent = Math.round(trace.progress * 100);
+  if (!trace.exact) return `trace past ${percent}%`;
+  return `trace ${percent}% on ${trace.hop_name}`;
 }
 
 /** connectionText is what the status bar says about the connection. */

@@ -39,6 +39,19 @@ export interface WorldDelta {
   world_time: string;
 }
 
+/** TraceDelta is the live trace, or null once none runs. */
+export interface TraceDelta {
+  seq: number;
+  trace: Trace | null;
+}
+
+/** AlertDelta is something the game says of its own accord. */
+export interface AlertDelta {
+  seq: number;
+  text: string;
+  kind?: Line['kind'];
+}
+
 /** ConnectionDelta is where the player is connected, or null once nowhere. */
 export interface ConnectionDelta {
   seq: number;
@@ -68,6 +81,19 @@ export interface Tool {
   left_seconds: number;
 }
 
+/**
+ * Trace is how far the organisation has got in working out where the player
+ * is. Without the TraceMeter the progress is rounded to quarters and the rest
+ * is left out: the server decides what the page is allowed to know.
+ */
+export interface Trace {
+  progress: number;
+  exact: boolean;
+  hop: number;
+  hop_name: string;
+  left_seconds: number;
+}
+
 /** Connection is the live connection, as the server reports it. */
 export interface Connection {
   target: ServerRef;
@@ -94,6 +120,7 @@ export interface RunState {
   known_servers: number;
   route: ServerRef[];
   connection: Connection | null;
+  trace: Trace | null;
 }
 
 /** ApiError carries the server's own message, which is written for the player. */
