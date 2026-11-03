@@ -52,6 +52,16 @@ test('an agent signs up, starts a run, reads it, and comes back to it', async ({
     await expect(page.getByText(/no run/)).toBeVisible();
   });
 
+  await test.step('the world clock moves on its own', async () => {
+    // Nothing is typed in this step. The clock changes because the server's
+    // simulation loop broadcasts it and the page applies the delta — which is
+    // the whole of the state stream working, from the loop to the pixel.
+    const clock = page.getByTitle('World time');
+    const first = (await clock.textContent()) ?? '';
+    expect(first).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    await expect(clock).not.toHaveText(first, { timeout: 20_000 });
+  });
+
   await test.step('`run new` starts a run', async () => {
     await command(page, 'run new');
     await expect(page.getByText('New run started. Your gateway is online.')).toBeVisible();
