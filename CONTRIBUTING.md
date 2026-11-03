@@ -73,6 +73,7 @@ it does in production.
 | `internal/world/`  | The world catalogue and the loader that checks it         |
 | `data/world/`      | The world itself, as data files                           |
 | `web/`             | The browser client                                        |
+| `e2e/`             | The browser test that walks a player's path               |
 
 ## How to write it
 
@@ -101,6 +102,28 @@ cd web && npm run lint && npm run typecheck && npm run build
 The tests that need a database make one of their own and drop it afterwards.
 Without `DARKNODE_TEST_DATABASE_URL` they skip, which is fine on a laptop; CI
 sets `DARKNODE_TEST_REQUIRE_DB`, so there a missing database fails the run.
+
+One test uses a browser. It starts the server against a real PostgreSQL, has
+it serve the client you built, and walks the path a new player walks: sign up,
+keep the recovery codes, start a run, read it, sign out and come back to it.
+That is the check that catches the server, the database and the client
+disagreeing — a client that asks for an endpoint the server does not have
+type-checks, lints, and passes every test on either side of it.
+
+```bash
+cd web && npm ci --ignore-scripts && npm run build   # the test serves this
+cd ../e2e && npm ci --ignore-scripts
+npx playwright install chromium                      # once; about 200 MB
+
+createdb darknode_e2e                                # it is written to for real
+export DARKNODE_E2E_DATABASE_URL="postgres://postgres:postgres@127.0.0.1:5432/darknode_e2e?sslmode=disable"
+npm test
+```
+
+Give it a database of its own, as above: it migrates the one it is handed and
+leaves the accounts it made in it. Add to this test with every slice of the
+game that a player can reach — it is meant to grow into the whole loop, and a
+feature nobody can reach through it is a feature nobody can play.
 
 ### Commits
 

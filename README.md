@@ -129,21 +129,25 @@ independent security review.
 
 Every change to `main` and `dev` goes through
 [test.yml](.github/workflows/test.yml), on its pull request or its push: the
-server is checked for formatting
-and tidy module files, vetted, built, and its tests run with the race detector
-against a real PostgreSQL, so the tests that are about the schema really meet
-one; every file Prettier reads, the docs and the workflows included, is
-checked against one formatting config; the client is linted with ESLint,
-type-checked and built; the image
-is built and then checked to hold no shell and no package manager and not to
-run as root. [security.yml](.github/workflows/security.yml) runs govulncheck
-and staticcheck on the server, `npm audit` and a signature check on the
-client's packages and the formatter, Trivy over the tree and over the image,
-and two checks that
-every action is pinned to the commit of the version named beside it.
-[codeql.yml](.github/workflows/codeql.yml) analyses the Go and the TypeScript.
-security.yml and codeql.yml also run weekly, so a vulnerability published after
-a change still surfaces. Commits are signed.
+server is checked for formatting and tidy module files, vetted, built, and its
+tests run with the race detector against a real PostgreSQL, so the tests that
+are about the schema really meet one; every file Prettier reads, the docs and
+the workflows included, is checked against one formatting config; the client is
+linted with ESLint, type-checked and built; a browser walks the path a new
+player walks — sign up, keep the recovery codes, start a run, read it, sign out
+and come back to it — against the server, a real PostgreSQL and the built
+client, so a client that asks the server for something it does not have cannot
+pass; and the image is built and then checked to hold no shell and no package
+manager and not to run as root.
+[security.yml](.github/workflows/security.yml) runs govulncheck and staticcheck
+on the server, `npm audit` and a signature check on the client's packages, the
+formatter's and the browser test's, Trivy over the tree and over the image, and
+two checks that every action is pinned to the commit of the version named
+beside it. [codeql.yml](.github/workflows/codeql.yml) analyses the Go and the
+TypeScript. test.yml also runs daily, because the tests carry clocks and a date
+passing can turn them red with nothing changed in the repository; security.yml
+and codeql.yml run weekly, so a vulnerability published after a change still
+surfaces. Commits are signed.
 
 **What the maintainer decided and read**
 
