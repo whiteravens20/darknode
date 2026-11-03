@@ -100,7 +100,7 @@ jobs:
           # merge. A missing one is a warning until v1, and an error from then
           # on. The names a commit really reports:
           #   gh api repos/OWNER/REPO/commits/dev/check-runs --jq '.check_runs[].name'
-          MUST_HAVE=("Server" "Client" "Image" "Analyze (go)" "Analyze (javascript-typescript)" "Go vulnerabilities" "Client dependencies" "Staticcheck" "Trivy filesystem scan")
+          MUST_HAVE=("Server" "Client" "End to end" "Image" "Analyze (go)" "Analyze (javascript-typescript)" "Go vulnerabilities" "Client dependencies" "Staticcheck" "Trivy filesystem scan")
 
           REQUIRED_CHECKS=$(echo "$PROT" | jq -r '.required_status_checks.contexts[]? // empty' | sort)
           if [ -z "$REQUIRED_CHECKS" ]; then
