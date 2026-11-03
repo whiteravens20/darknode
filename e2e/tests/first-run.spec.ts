@@ -134,6 +134,14 @@ test('an agent signs up, starts a run, reads it, and comes back to it', async ({
     await command(page, 'cat /readme.txt');
     await expect(page.getByText(/here to be broken into/)).toBeVisible();
 
+    // And the machine wrote all of it down. Clearing those lines is what a
+    // clean exit means.
+    await command(page, 'log');
+    await expect(page.getByText(/CONNECT\s+your gateway\s+stands/)).toBeVisible();
+    await expect(page.getByText(/READ\s+your gateway\s+stands/)).toBeVisible();
+    await command(page, 'log wipe');
+    await expect(page.getByText(/line\(s\) cleared with LogWiper v1/)).toBeVisible();
+
     await command(page, 'disconnect');
   });
 

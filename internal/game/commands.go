@@ -80,6 +80,7 @@ func init() {
 		{name: "disconnect", usage: "disconnect", summary: "close the connection", needConn: true, run: (*Env).disconnect},
 		{name: "links", usage: "links [page]", summary: "read the register (connect to it first)", needConn: true, run: (*Env).links},
 		{name: "trace", usage: "trace", summary: "how far anybody has got in finding you", needRun: true, run: (*Env).traceCmd},
+		{name: "log", usage: "log [wipe]", summary: "the lines you left here, and how to clear them", needConn: true, run: (*Env).logCmd},
 		{name: "ls", usage: "ls", summary: "the files on the server you are on", needConn: true, run: (*Env).ls},
 		{name: "cat", usage: "cat <path>", summary: "read a file", needConn: true, run: (*Env).cat},
 		{name: "tools", usage: "tools", summary: "the programs on your gateway", needRun: true, run: (*Env).tools},
@@ -446,7 +447,7 @@ func (e *Env) bounce(_ context.Context, c cmd) (Result, error) {
 	}
 }
 
-func (e *Env) connect(_ context.Context, c cmd) (Result, error) {
+func (e *Env) connect(ctx context.Context, c cmd) (Result, error) {
 	live, err := e.live()
 	if err != nil {
 		return Result{}, err
@@ -468,6 +469,14 @@ func (e *Env) connect(_ context.Context, c cmd) (Result, error) {
 		return errorResult("Your route is longer than your gateway's network cards allow."), nil
 	case err != nil:
 		return Result{}, err
+	}
+
+	// Every node of the route writes down where the traffic came from. That
+	// is what an investigation reads, and what `log wipe` is for.
+	if entries := connectionLogs(conn, e.Clock.Now(e.Now())); len(entries) > 0 {
+		if err := e.Store.AddLogs(ctx, c.run.ID, entries); err != nil {
+			return Result{}, err
+		}
 	}
 
 	lines := []Line{{Text: fmt.Sprintf("Connecting to %s (%s)…", target.Name, target.IP)}}
@@ -550,7 +559,7 @@ func (e *Env) ls(_ context.Context, c cmd) (Result, error) {
 	return out, nil
 }
 
-func (e *Env) cat(_ context.Context, c cmd) (Result, error) {
+func (e *Env) cat(ctx context.Context, c cmd) (Result, error) {
 	if len(c.args) != 1 {
 		return errorResult("Usage: cat <path>"), nil
 	}
@@ -573,6 +582,9 @@ func (e *Env) cat(_ context.Context, c cmd) (Result, error) {
 		if !c.conn.Target.Type().Public() || f.Sensitive {
 			if live, err := e.live(); err == nil {
 				live.ArmTrace(c.p.AccountID, c.run)
+			}
+			if err := e.logAct(ctx, c.run.ID, c.conn, ActionRead); err != nil {
+				return Result{}, err
 			}
 		}
 		out := Result{Lines: []Line{{Text: f.Path, Kind: KindHead}}}

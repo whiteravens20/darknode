@@ -31,6 +31,7 @@ start:
     - { id: firewall_opener, version: 1 }
     - { id: proxy_opener, version: 1 }
     - { id: monitor_mask, version: 1 }
+    - { id: log_wiper, version: 1 }
 `)},
 		"software.yaml": {Data: []byte(`
 software:
@@ -54,6 +55,13 @@ software:
     name: MonitorMask
     description: Hides a connection from a monitor.
     versions: [{ version: 1, price: 2500, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }]
+  - id: log_wiper
+    name: LogWiper
+    description: Clears the lines you left in a log.
+    versions:
+      - { version: 1, price: 500, size_mb: 1, cpu_mhz: 0, ram_mb: 0 }
+      - { version: 2, price: 2000, size_mb: 2, cpu_mhz: 0, ram_mb: 0 }
+      - { version: 3, price: 5000, size_mb: 3, cpu_mhz: 0, ram_mb: 0 }
   - id: decrypter
     name: Decrypter
     description: Heavy on the processor and the memory.
@@ -334,7 +342,7 @@ func TestSnapshot(t *testing.T) {
 	if s.Run.Balance.Clean != StartBalance || s.Run.Gateway != (GatewayView{2000, 4096, 100, 256000, 2, 1}) {
 		t.Errorf("run view: %+v", s.Run)
 	}
-	if len(s.Run.Software) != 5 || s.Run.Software[0].Name != "AddressProbe" || s.Run.KnownServers != 7 {
+	if len(s.Run.Software) != 6 || s.Run.Software[0].Name != "AddressProbe" || s.Run.KnownServers != 7 {
 		t.Errorf("software %+v, known %d", s.Run.Software, s.Run.KnownServers)
 	}
 }

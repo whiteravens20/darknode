@@ -28,9 +28,11 @@ const liveReport = 500 * time.Millisecond
 type finishedTool struct {
 	account int64
 	tool    *running
-	// runID and server say where root was won, when that is what finished.
+	// runID, server and source say where root was won and from which node,
+	// when that is what finished.
 	runID  int64
 	server string
+	source string
 	at     time.Time
 }
 
@@ -184,10 +186,16 @@ func (e *Engine) tick(ctx context.Context, dt time.Duration, now time.Time) {
 		if f.tool.Layer != LayerPassword {
 			continue
 		}
-		// Root lasts for the run, so it is the one thing a finished program
-		// leaves behind it.
+		// Root lasts for the run, and winning it is an act the server
+		// writes down like any other.
 		if err := e.env.Store.GrantRoot(ctx, f.runID, f.server, f.at); err != nil && ctx.Err() == nil {
 			e.log.Error("write down root", "run", f.runID, "server", f.server, "err", err)
+		}
+		if err := e.env.Store.AddLogs(ctx, f.runID, []store.LogEntry{{
+			Server: f.server, HopIndex: 0, WorldTime: e.env.Clock.Now(f.at),
+			Action: ActionRoot, SourceIP: f.source,
+		}}); err != nil && ctx.Err() == nil {
+			e.log.Error("write down the root in the log", "run", f.runID, "server", f.server, "err", err)
 		}
 	}
 	for _, b := range busted {
@@ -261,9 +269,13 @@ func (e *Engine) step(dt time.Duration, now time.Time) ([]finishedTool, []busted
 				r.conn.reported = now
 				connected = append(connected, account)
 				for _, tool := range finished {
+					source := ""
+					if n := len(r.conn.Route); n > 0 {
+						source = r.conn.Route[n-1].IP.String()
+					}
 					done = append(done, finishedTool{
 						account: account, tool: tool,
-						runID: r.conn.runID, server: r.conn.Target.ID, at: now,
+						runID: r.conn.runID, server: r.conn.Target.ID, source: source, at: now,
 					})
 				}
 			} else if len(r.conn.tools) > 0 && now.Sub(r.conn.reported) >= liveReport {
@@ -367,6 +379,43 @@ func (e *Engine) ArmTrace(account int64, run *store.Run) {
 		Text: fmt.Sprintf("%s has started working out where you are.", target),
 		Kind: KindError,
 	})
+}
+
+// BreakTrail is the one way out of a trace that is already coming: the logs
+// on a hop it has not reached yet are cleared, so the line it would have
+// followed back is gone and it stops where it stands.
+//
+// It reports whether that is what happened. Clearing the log of the hop the
+// trace already stands on, or of one it has passed, changes nothing: it has
+// read those lines already.
+func (e *Engine) BreakTrail(account int64, server string) bool {
+	e.mu.Lock()
+	r := e.live[account]
+	if r == nil || r.trace == nil {
+		e.mu.Unlock()
+		return false
+	}
+	at := r.trace.at()
+	broke := false
+	for i, h := range r.trace.hops {
+		if h.id == server && i > at {
+			broke = true
+			break
+		}
+	}
+	if broke {
+		r.trace = nil
+	}
+	e.mu.Unlock()
+
+	if broke {
+		e.out.Publish(account, DeltaTrace, TraceDelta{Trace: nil})
+		e.out.Publish(account, DeltaAlert, AlertDelta{
+			Text: "The trail is broken. Whoever was following it has nothing left to follow.",
+			Kind: KindOK,
+		})
+	}
+	return broke
 }
 
 // Trace returns a copy of the player's live trace, or nil.

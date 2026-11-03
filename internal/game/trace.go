@@ -87,6 +87,8 @@ const traceTool = "trace_meter"
 // hop is one node of the route a trace walks, from the target back to the
 // gateway.
 type hop struct {
+	// id is the server's id, empty for the player's own gateway.
+	id   string
 	name string
 	cost float64
 }
@@ -117,7 +119,7 @@ type trace struct {
 func newTrace(c *Connection, gatewaySecurity int, rooted func(string) bool, now time.Time) *trace {
 	t := &trace{reported: now}
 
-	t.hops = append(t.hops, hop{name: c.Target.Name, cost: CostTarget})
+	t.hops = append(t.hops, hop{id: c.Target.ID, name: c.Target.Name, cost: CostTarget})
 	// The trace walks the route backwards: the relay nearest the target
 	// first, the one nearest the gateway last.
 	for i := len(c.Route) - 1; i >= 0; i-- {
@@ -126,7 +128,7 @@ func newTrace(c *Connection, gatewaySecurity int, rooted func(string) bool, now 
 		if rooted(relay.ID) {
 			resist *= RootResist
 		}
-		t.hops = append(t.hops, hop{name: relay.Name, cost: CostRelay * resist})
+		t.hops = append(t.hops, hop{id: relay.ID, name: relay.Name, cost: CostRelay * resist})
 	}
 	t.hops = append(t.hops, hop{
 		name: "your gateway",

@@ -197,6 +197,70 @@ func (s *Store) MarkProbed(ctx context.Context, runID int64, server string) (boo
 	return tag.RowsAffected() == 1, nil
 }
 
+// LogEntry is one line a run left in a server's log.
+type LogEntry struct {
+	ID        int64
+	Server    string
+	HopIndex  int
+	WorldTime time.Time
+	Action    string
+	// SourceIP is the node the connection came from, empty for the hop the
+	// player's own gateway talked to.
+	SourceIP string
+	// WipedWith is the version of the LogWiper that cleared the line, or 0
+	// while it stands.
+	WipedWith int
+}
+
+// Wiped reports whether the line has been cleared.
+func (e LogEntry) Wiped() bool { return e.WipedWith > 0 }
+
+// AddLogs writes the lines a run left, in one statement.
+func (s *Store) AddLogs(ctx context.Context, runID int64, entries []LogEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	rows := make([][]any, 0, len(entries))
+	for _, e := range entries {
+		rows = append(rows, []any{runID, e.Server, e.HopIndex, e.WorldTime, e.Action, e.SourceIP})
+	}
+	_, err := s.pool.CopyFrom(ctx, pgx.Identifier{"run_log"},
+		[]string{"run_id", "server", "hop_index", "world_time", "action", "source_ip"},
+		pgx.CopyFromRows(rows))
+	return err
+}
+
+// LogsOn returns the lines this run left on one server, oldest first.
+func (s *Store) LogsOn(ctx context.Context, runID int64, server string) ([]LogEntry, error) {
+	return collect2(ctx, s, `SELECT id, server, hop_index, world_time, action, source_ip, wiped_with
+		FROM run_log WHERE run_id = $1 AND server = $2 ORDER BY id`, runID, server, scanLog)
+}
+
+// LogsOfRun returns every line this run left, oldest first. An investigation
+// reads them to walk the route back.
+func (s *Store) LogsOfRun(ctx context.Context, runID int64) ([]LogEntry, error) {
+	return collect(ctx, s, `SELECT id, server, hop_index, world_time, action, source_ip, wiped_with
+		FROM run_log WHERE run_id = $1 ORDER BY id`, runID, scanLog)
+}
+
+func scanLog(row pgx.CollectableRow) (LogEntry, error) {
+	var e LogEntry
+	err := row.Scan(&e.ID, &e.Server, &e.HopIndex, &e.WorldTime, &e.Action, &e.SourceIP, &e.WipedWith)
+	return e, err
+}
+
+// WipeLogs clears the lines this run left on one server and reports how many
+// it cleared. A line already clear is left as it was: the first wipe is the
+// one that counts, and a worse program cannot undo a better one.
+func (s *Store) WipeLogs(ctx context.Context, runID int64, server string, version int) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE run_log SET wiped_with = $3
+		WHERE run_id = $1 AND server = $2 AND wiped_with = 0`, runID, server, version)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // GrantRoot records that the run won root on a server. Winning it twice
 // changes nothing, so the first time is the one that counts.
 func (s *Store) GrantRoot(ctx context.Context, runID int64, server string, at time.Time) error {
@@ -225,6 +289,14 @@ func (s *Store) AddExposure(ctx context.Context, accountIDs []int64, seconds int
 
 func collect[T any](ctx context.Context, s *Store, sql string, arg any, scan pgx.RowToFunc[T]) ([]T, error) {
 	rows, err := s.pool.Query(ctx, sql, arg)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, scan)
+}
+
+func collect2[T any](ctx context.Context, s *Store, sql string, a, b any, scan pgx.RowToFunc[T]) ([]T, error) {
+	rows, err := s.pool.Query(ctx, sql, a, b)
 	if err != nil {
 		return nil, err
 	}
