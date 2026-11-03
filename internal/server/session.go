@@ -64,8 +64,9 @@ func (s *Server) withSession(next func(http.ResponseWriter, *http.Request, sessi
 			writeError(w, http.StatusUnauthorized, "no_session", "Not signed in.")
 			return
 		}
+		now := s.Now()
 		tokenHash := auth.TokenHash(c.Value)
-		sess, err := s.Store.SessionByToken(r.Context(), tokenHash)
+		sess, err := s.Store.SessionByToken(r.Context(), tokenHash, now)
 		if errors.Is(err, store.ErrNotFound) {
 			s.clearSessionCookie(w)
 			writeError(w, http.StatusUnauthorized, "no_session", "Your session has ended. Sign in again.")
@@ -79,13 +80,12 @@ func (s *Server) withSession(next func(http.ResponseWriter, *http.Request, sessi
 
 		// A session ends after sessionIdle without use, and after
 		// sessionLifetime from its start whatever happens.
-		now := s.Now()
 		expires := now.Add(sessionIdle)
 		if limit := sess.CreatedAt.Add(sessionLifetime); expires.After(limit) {
 			expires = limit
 		}
 		if now.Sub(sess.LastSeenAt) >= sessionTouch {
-			if err := s.Store.TouchSession(r.Context(), tokenHash, expires); err != nil {
+			if err := s.Store.TouchSession(r.Context(), tokenHash, now, expires); err != nil {
 				s.Logger.Error("touch session", "err", err)
 			} else {
 				s.setSessionCookie(w, c.Value) // move the browser's expiry forward too

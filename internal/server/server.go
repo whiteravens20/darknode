@@ -115,7 +115,7 @@ func (s *Server) Background(ctx context.Context) {
 			}
 			s.Puzzle.Prune(now)
 		case <-sessions.C:
-			if n, err := s.Store.DeleteExpiredSessions(ctx); err != nil && ctx.Err() == nil {
+			if n, err := s.Store.DeleteExpiredSessions(ctx, s.Now()); err != nil && ctx.Err() == nil {
 				s.Logger.Error("delete expired sessions", "err", err)
 			} else if n > 0 {
 				s.Logger.Info("deleted expired sessions", "count", n)

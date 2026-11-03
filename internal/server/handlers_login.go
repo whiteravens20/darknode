@@ -78,7 +78,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := auth.NewSessionToken()
-	if err := s.Store.CreateSession(r.Context(), acct.ID, auth.TokenHash(token), now.Add(sessionIdle)); err != nil {
+	if err := s.Store.CreateSession(r.Context(), acct.ID, auth.TokenHash(token), now, now.Add(sessionIdle)); err != nil {
 		s.Logger.Error("create session", "account", acct.ID, "err", err)
 		writeError(w, http.StatusInternalServerError, "internal", "Something went wrong.")
 		return
@@ -160,7 +160,7 @@ func (s *Server) recoverAccount(w http.ResponseWriter, r *http.Request) {
 	token := auth.NewSessionToken()
 	err = s.Store.Recover(r.Context(), acct.ID,
 		auth.CodeMAC(s.Config.Secret, auth.RecoveryCode, normalized),
-		hash, auth.TokenHash(token), now.Add(sessionIdle))
+		hash, auth.TokenHash(token), now, now.Add(sessionIdle))
 	if errors.Is(err, store.ErrCodeInvalid) {
 		s.recoverBackoff.Fail(netKey, now)
 		writeError(w, http.StatusUnauthorized, "recovery_failed", failed)

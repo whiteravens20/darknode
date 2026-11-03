@@ -41,6 +41,7 @@ func newAccount(name string) store.NewAccount {
 		PasswordHash:   "hash",
 		RecoveryMACs:   [][]byte{[]byte("code-1"), []byte("code-2")},
 		SessionHash:    []byte("session-" + name),
+		SessionStarted: time.Now(),
 		SessionExpires: time.Now().Add(time.Hour),
 	}
 }
@@ -88,20 +89,20 @@ func TestRecoverUsesCodeOnceAndEndsSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SessionByToken(ctx, []byte("session-player")); err != nil {
+	if _, err := s.SessionByToken(ctx, []byte("session-player"), time.Now()); err != nil {
 		t.Fatalf("the first session was not created: %v", err)
 	}
 	newSession := []byte("after-recovery")
-	if err := s.Recover(ctx, a.ID, []byte("code-1"), "new-hash", newSession, time.Now().Add(time.Hour)); err != nil {
+	if err := s.Recover(ctx, a.ID, []byte("code-1"), "new-hash", newSession, time.Now(), time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SessionByToken(ctx, []byte("session-player")); !errors.Is(err, store.ErrNotFound) {
+	if _, err := s.SessionByToken(ctx, []byte("session-player"), time.Now()); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("the old session survived the recovery: %v", err)
 	}
-	if _, err := s.SessionByToken(ctx, newSession); err != nil {
+	if _, err := s.SessionByToken(ctx, newSession, time.Now()); err != nil {
 		t.Fatalf("the new session is missing: %v", err)
 	}
-	if err := s.Recover(ctx, a.ID, []byte("code-1"), "again", []byte("x"), time.Now().Add(time.Hour)); !errors.Is(err, store.ErrCodeInvalid) {
+	if err := s.Recover(ctx, a.ID, []byte("code-1"), "again", []byte("x"), time.Now(), time.Now().Add(time.Hour)); !errors.Is(err, store.ErrCodeInvalid) {
 		t.Fatalf("a used code was accepted again: %v", err)
 	}
 	got, _ := s.AccountByUsername(ctx, "player")
@@ -120,14 +121,57 @@ func TestExpiredSessionIsNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CreateSession(ctx, a.ID, []byte("old"), time.Now().Add(-time.Minute)); err != nil {
+	if err := s.CreateSession(ctx, a.ID, []byte("old"), time.Now().Add(-time.Hour), time.Now().Add(-time.Minute)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SessionByToken(ctx, []byte("old")); !errors.Is(err, store.ErrNotFound) {
+	if _, err := s.SessionByToken(ctx, []byte("old"), time.Now()); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("an expired session was returned: %v", err)
 	}
-	n, err := s.DeleteExpiredSessions(ctx)
+	n, err := s.DeleteExpiredSessions(ctx, time.Now())
 	if err != nil || n != 1 {
+		t.Fatalf("deleted %d expired sessions, err %v", n, err)
+	}
+}
+
+// TestSessionAgeFollowsTheServerClock pins what the store must not do: decide
+// a session's age by the database's own clock. The dates here are far from
+// today's on purpose, so a return to now() fails the test on any day.
+func TestSessionAgeFollowsTheServerClock(t *testing.T) {
+	s := storetest.Open(t)
+	ctx := context.Background()
+	a, err := s.CreateAccount(ctx, newAccount("player"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	long := time.Date(2001, 1, 1, 12, 0, 0, 0, time.UTC)
+	token := []byte("by-the-clock")
+	if err := s.CreateSession(ctx, a.ID, token, long, long.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SessionByToken(ctx, token, long.Add(time.Minute)); err != nil {
+		t.Fatalf("a session the clock says is current was not found: %v", err)
+	}
+	if _, err := s.SessionByToken(ctx, token, long.Add(2*time.Hour)); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("a session past its expiry was returned: %v", err)
+	}
+
+	// Being used moves the expiry, and records when, by the same clock.
+	if err := s.TouchSession(ctx, token, long.Add(time.Minute), long.Add(3*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	sess, err := s.SessionByToken(ctx, token, long.Add(2*time.Hour))
+	if err != nil {
+		t.Fatalf("the session was not found after being used: %v", err)
+	}
+	if !sess.CreatedAt.Equal(long) || !sess.LastSeenAt.Equal(long.Add(time.Minute)) {
+		t.Fatalf("created %v, last seen %v", sess.CreatedAt, sess.LastSeenAt)
+	}
+
+	// So does the sweeper.
+	if n, err := s.DeleteExpiredSessions(ctx, long.Add(2*time.Hour)); err != nil || n != 0 {
+		t.Fatalf("deleted %d sessions that had not expired, err %v", n, err)
+	}
+	if n, err := s.DeleteExpiredSessions(ctx, long.Add(4*time.Hour)); err != nil || n != 1 {
 		t.Fatalf("deleted %d expired sessions, err %v", n, err)
 	}
 }

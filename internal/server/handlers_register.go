@@ -127,13 +127,15 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 
 	codes, macs := s.newRecoveryCodes()
 	token := auth.NewSessionToken()
+	now := s.Now()
 	acct, err := s.Store.CreateAccount(r.Context(), store.NewAccount{
 		Username:       username,
 		PasswordHash:   hash,
 		RecoveryMACs:   macs,
 		InviteMAC:      inviteMAC,
 		SessionHash:    auth.TokenHash(token),
-		SessionExpires: s.Now().Add(sessionIdle),
+		SessionStarted: now,
+		SessionExpires: now.Add(sessionIdle),
 	})
 	switch {
 	case errors.Is(err, store.ErrUsernameTaken):

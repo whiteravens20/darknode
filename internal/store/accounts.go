@@ -33,8 +33,10 @@ type NewAccount struct {
 	RecoveryMACs [][]byte
 	// InviteMAC is the HMAC of the invite code, or nil when none is needed.
 	InviteMAC []byte
-	// SessionHash and SessionExpires start the first session.
+	// SessionHash starts the first session, running from SessionStarted
+	// until SessionExpires.
 	SessionHash    []byte
+	SessionStarted time.Time
 	SessionExpires time.Time
 }
 
@@ -65,7 +67,7 @@ func (s *Store) CreateAccount(ctx context.Context, n NewAccount) (Account, error
 		if err := insertRecoveryCodes(ctx, tx, a.ID, n.RecoveryMACs); err != nil {
 			return err
 		}
-		return insertSession(ctx, tx, a.ID, n.SessionHash, n.SessionExpires)
+		return insertSession(ctx, tx, a.ID, n.SessionHash, n.SessionStarted, n.SessionExpires)
 	})
 	return a, err
 }
@@ -90,7 +92,7 @@ func (s *Store) SetPasswordHash(ctx context.Context, accountID int64, hash strin
 
 // Recover uses up one recovery code, sets a new password hash, ends every
 // session of the account and starts a new one, all in one transaction.
-func (s *Store) Recover(ctx context.Context, accountID int64, codeMAC []byte, hash string, sessionHash []byte, expires time.Time) error {
+func (s *Store) Recover(ctx context.Context, accountID int64, codeMAC []byte, hash string, sessionHash []byte, started, expires time.Time) error {
 	return s.tx(ctx, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, `UPDATE recovery_code SET used_at = now()
 			WHERE account_id = $1 AND code_mac = $2 AND used_at IS NULL`, accountID, codeMAC)
@@ -106,7 +108,7 @@ func (s *Store) Recover(ctx context.Context, accountID int64, codeMAC []byte, ha
 		if _, err := tx.Exec(ctx, "DELETE FROM session WHERE account_id = $1", accountID); err != nil {
 			return err
 		}
-		return insertSession(ctx, tx, accountID, sessionHash, expires)
+		return insertSession(ctx, tx, accountID, sessionHash, started, expires)
 	})
 }
 
