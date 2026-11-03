@@ -75,6 +75,7 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             web/package-lock.json
+            e2e/package-lock.json
 
       # What ships to a browser gets the tighter bar; the build-only packages
       # stay at high to keep the noise down.
@@ -84,10 +85,14 @@ jobs:
       - name: Audit the build packages
         run: npm audit --audit-level=high
 
-      # The formatter at the root ships nothing and runs in CI, so it is held
-      # to the bar of the build packages.
+      # The formatter at the root and the browser test ship nothing and run in
+      # CI, so both are held to the bar of the build packages.
       - name: Audit the formatter
         working-directory: .
+        run: npm audit --audit-level=high
+
+      - name: Audit the test's packages
+        working-directory: e2e
         run: npm audit --audit-level=high
 
       - name: Install
@@ -97,6 +102,10 @@ jobs:
         working-directory: .
         run: npm ci --ignore-scripts
 
+      - name: Install the test's packages
+        working-directory: e2e
+        run: npm ci --ignore-scripts
+
       # Checks every installed tarball against its registry signature, which
       # catches a forged tarball or tampered registry data.
       - name: Verify the signatures
@@ -104,6 +113,10 @@ jobs:
 
       - name: Verify the formatter's signatures
         working-directory: .
+        run: npm audit signatures
+
+      - name: Verify the test packages' signatures
+        working-directory: e2e
         run: npm audit signatures
 
   dependency-review:
