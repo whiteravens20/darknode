@@ -137,6 +137,34 @@ test('an agent signs up, starts a run, reads it, and comes back to it', async ({
     await command(page, 'disconnect');
   });
 
+  await test.step('working on the way in starts the trace', async () => {
+    // The terminal keeps everything it printed, so the screen is cleared
+    // first: an assertion must match this step's output, not an older line.
+    await command(page, 'clear');
+    await command(page, 'bounce clear');
+
+    // The bank is out of reach with a starting kit — its proxy needs a
+    // program the shop sells — so this is shown on the handbook machine.
+    // Not the practice machine: the run already holds root there, and root
+    // lasts, so there would be no way in left to work on. What is proved
+    // here is the trace itself: it starts when there is an act against the
+    // server, it is pushed to the page, and leaving ends it.
+    await command(page, 'connect 10.0.0.2');
+    await command(page, 'trace');
+    await expect(page.getByText(/Nobody is working out where you are/)).toBeVisible();
+    await expect(page.getByTitle('Trace')).toBeHidden();
+
+    await command(page, 'run pass_breaker');
+    await expect(page.getByText(/has started working out where you are/)).toBeVisible();
+    await expect(page.getByTitle('Trace')).toContainText(/trace past \d+%/);
+    await command(page, 'trace');
+    await expect(page.getByText(/A TraceMeter would tell you exactly/)).toBeVisible();
+
+    // Leaving of your own accord is what a trace is raced against.
+    await command(page, 'disconnect');
+    await expect(page.getByTitle('Trace')).toBeHidden();
+  });
+
   await test.step('signing out ends the session', async () => {
     await command(page, 'logout');
     await expect(page.getByRole('heading', { name: 'DarkNode', level: 1 })).toBeVisible();
