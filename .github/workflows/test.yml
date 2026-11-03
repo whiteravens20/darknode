@@ -5,6 +5,13 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  schedule:
+    # Daily at 05:40 UTC. The suite has clocks in it, and a date passing can
+    # turn a green build red with nothing changed in the repository. That
+    # happened on 1 November 2026 and sat unseen for two days, because this
+    # workflow ran only on a push and the weekly security and CodeQL runs do
+    # not run the tests.
+    - cron: '40 5 * * *'
 
 permissions:
   contents: read
