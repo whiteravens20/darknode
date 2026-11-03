@@ -18,3 +18,7 @@ start:
   software:
     - { id: pass_breaker, version: 1 }
     - { id: log_wiper, version: 1 }
+    # Without a probe an agent cannot see what stands in front of a server,
+    # and at a hundred credits the shop is out of reach, so the first contract
+    # would be taken blind.
+    - { id: address_probe, version: 1 }
