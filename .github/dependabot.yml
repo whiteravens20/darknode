@@ -1,7 +1,7 @@
 # ── Dependabot configuration ──────────────────────────────────────────────────
-# Keeps GitHub Actions, the Go modules, the client's npm packages, the
-# formatter and the Docker base images up to date. Pull requests open against
-# `dev`.
+# Keeps GitHub Actions, the Go modules, the client's npm packages, the browser
+# test's, the formatter and the Docker base images up to date. Pull requests
+# open against `dev`.
 #
 # Supply-chain quarantine: every ecosystem sets `cooldown: 7`, so a version is
 # never proposed until it has been public for a week. That is the enforcement
@@ -113,6 +113,41 @@ updates:
     # ships, and supports TypeScript below 6.1 only. TypeScript 7 comes back
     # together with a typescript-eslint release that supports it.
     ignore:
+      - dependency-name: typescript
+        versions: ['>=7.0.0']
+
+  # ── The browser test ─────────────────────────────────────────────────────────
+  # Playwright, and the lint and type tools the test itself is checked with.
+  # None of it ships: it runs in CI and on a developer's machine.
+  - package-ecosystem: npm
+    directory: /e2e
+    target-branch: dev
+    rebase-strategy: disabled
+    schedule:
+      interval: weekly
+      day: monday
+      time: '08:00'
+      timezone: UTC
+    labels:
+      - dependencies
+      - tooling
+    commit-message:
+      prefix: chore(e2e)
+    cooldown:
+      default-days: 7
+    groups:
+      e2e-non-breaking:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # @types/node describes the runtime the test runs on, which is the Node
+      # the workflows name. A new major of it comes with that one, by hand.
+      - dependency-name: '@types/node'
+        update-types:
+          - version-update:semver-major
+      # The same limit as the client: typescript-eslint reads the compiler's
+      # API, which TypeScript 7 no longer ships.
       - dependency-name: typescript
         versions: ['>=7.0.0']
 
