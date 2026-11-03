@@ -501,7 +501,7 @@ func (e *Env) connect(ctx context.Context, c cmd) (Result, error) {
 	return Result{Lines: lines}, nil
 }
 
-func (e *Env) disconnect(_ context.Context, c cmd) (Result, error) {
+func (e *Env) disconnect(ctx context.Context, c cmd) (Result, error) {
 	live, err := e.live()
 	if err != nil {
 		return Result{}, err
@@ -513,6 +513,12 @@ func (e *Env) disconnect(_ context.Context, c cmd) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	// What was left in the logs is now somebody else's problem to read. The
+	// player is told nothing about it: that is what clearing a log buys.
+	if _, err := e.OpenInvestigation(ctx, c.run, conn.Target, conn.Route); err != nil {
+		return Result{}, err
+	}
+
 	lines := []Line{{Text: fmt.Sprintf("Disconnected from %s.", conn.Target.Name), Kind: KindOK}}
 	if !conn.Target.Type().Public() {
 		lines = append(lines, Line{
@@ -585,7 +591,7 @@ func (e *Env) cat(ctx context.Context, c cmd) (Result, error) {
 			if live, err := e.live(); err == nil {
 				live.ArmTrace(c.p.AccountID, c.run)
 			}
-			if err := e.logAct(ctx, c.run.ID, c.conn, ActionRead); err != nil {
+			if err := e.logAct(ctx, c.run.ID, c.conn, ActionRead, f.Sensitive); err != nil {
 				return Result{}, err
 			}
 		}

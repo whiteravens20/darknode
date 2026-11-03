@@ -18,6 +18,8 @@ const (
 	ActionConnect = "CONNECT"
 	ActionRoot    = "ROOT"
 	ActionRead    = "READ"
+	ActionCopy    = "COPY"
+	ActionDelete  = "DELETE"
 )
 
 // logWiper is the program that clears a log, and its version decides how
@@ -59,8 +61,9 @@ func connectionLogs(conn *Connection, worldTime time.Time) []store.LogEntry {
 	return out
 }
 
-// logAct writes down one privileged act on the server the player is on.
-func (e *Env) logAct(ctx context.Context, runID int64, conn *Connection, action string) error {
+// logAct writes down one privileged act on the server the player is on, with
+// how heavy it was: that is what an investigation weighs a fine against.
+func (e *Env) logAct(ctx context.Context, runID int64, conn *Connection, action string, sensitive bool) error {
 	if conn.Target.Type().Public() {
 		return nil
 	}
@@ -70,7 +73,7 @@ func (e *Env) logAct(ctx context.Context, runID int64, conn *Connection, action 
 	}
 	return e.Store.AddLogs(ctx, runID, []store.LogEntry{{
 		Server: conn.Target.ID, HopIndex: 0, WorldTime: e.Clock.Now(e.Now()),
-		Action: action, SourceIP: source,
+		Action: action, SourceIP: source, Severity: severityOf(action, sensitive),
 	}})
 }
 

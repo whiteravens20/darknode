@@ -172,6 +172,10 @@ func (e *Engine) Run(ctx context.Context) {
 			e.tick(ctx, Tick, e.env.Now())
 		case <-flush.C:
 			e.flush(ctx)
+			// The walks after a break-in and the windows on a debt are both
+			// measured in online time, which has just been written down.
+			e.advanceInvestigations(ctx)
+			e.advanceDebts(ctx)
 		}
 	}
 }
@@ -181,7 +185,7 @@ func (e *Engine) Run(ctx context.Context) {
 // run the trace caught. The advancing itself is step, which touches no
 // database at all.
 func (e *Engine) tick(ctx context.Context, dt time.Duration, now time.Time) {
-	finished, busted := e.step(dt, now)
+	finished, busted, dropped := e.step(dt, now)
 	for _, f := range finished {
 		if f.tool.Layer != LayerPassword {
 			continue
@@ -196,6 +200,21 @@ func (e *Engine) tick(ctx context.Context, dt time.Duration, now time.Time) {
 			Action: ActionRoot, SourceIP: f.source,
 		}}); err != nil && ctx.Err() == nil {
 			e.log.Error("write down the root in the log", "run", f.runID, "server", f.server, "err", err)
+		}
+	}
+	for _, d := range dropped {
+		// The player stopped watching and the grace ran out: what they left
+		// in the logs is read by whoever owns them, exactly as if they had
+		// typed `disconnect`.
+		run, err := e.env.Store.ActiveRun(ctx, d.account)
+		if err != nil || run == nil {
+			if err != nil && ctx.Err() == nil {
+				e.log.Error("read the run a dropped connection belonged to", "account", d.account, "err", err)
+			}
+			continue
+		}
+		if _, err := e.env.OpenInvestigation(ctx, run, d.conn.Target, d.conn.Route); err != nil && ctx.Err() == nil {
+			e.log.Error("open an investigation after a dropped connection", "run", run.ID, "err", err)
 		}
 	}
 	for _, b := range busted {
@@ -217,11 +236,19 @@ type bustedRun struct {
 	at      time.Time
 }
 
+// droppedConnection is a connection the grace ran out on. It counts as a
+// disconnect in every way, logs included, so whatever was left in them is
+// now somebody's to read.
+type droppedConnection struct {
+	account int64
+	conn    *Connection
+}
+
 // step advances the simulation by dt, publishes what changed, and returns the
 // programs that finished and the runs the trace caught. It touches the
 // database never and the clock once, so a tick costs the same whether one
 // player is online or a hundred.
-func (e *Engine) step(dt time.Duration, now time.Time) ([]finishedTool, []bustedRun) {
+func (e *Engine) step(dt time.Duration, now time.Time) ([]finishedTool, []bustedRun, []droppedConnection) {
 	minute := e.env.Clock.Now(now).Truncate(time.Minute)
 
 	// Deltas go out after the lock is given up: the hub takes a lock of its
@@ -229,6 +256,7 @@ func (e *Engine) step(dt time.Duration, now time.Time) ([]finishedTool, []busted
 	var connected, traced []int64
 	var done []finishedTool
 	var busted []bustedRun
+	var dropped []droppedConnection
 	var alerts []alert
 
 	e.mu.Lock()
@@ -247,6 +275,9 @@ func (e *Engine) step(dt time.Duration, now time.Time) ([]finishedTool, []busted
 			// The grace is over with nobody watching: what was live is
 			// closed, exactly as a disconnect would close it. An account
 			// that owes nothing and holds nothing live is forgotten.
+			if r.conn != nil {
+				dropped = append(dropped, droppedConnection{account: account, conn: r.conn})
+			}
 			r.conn, r.trace = nil, nil
 			if r.owed == 0 {
 				delete(e.live, account)
@@ -344,7 +375,7 @@ func (e *Engine) step(dt time.Duration, now time.Time) ([]finishedTool, []busted
 	if moved && watching > 0 {
 		e.out.Broadcast(DeltaWorld, WorldDelta{WorldTime: minute.UTC()})
 	}
-	return done, busted
+	return done, busted, dropped
 }
 
 // alert is a line the game says of its own accord, queued until the lock is

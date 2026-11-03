@@ -210,6 +210,9 @@ type LogEntry struct {
 	// WipedWith is the version of the LogWiper that cleared the line, or 0
 	// while it stands.
 	WipedWith int
+	// Severity is how heavy the act was, which is what a fine is weighed
+	// against.
+	Severity int
 }
 
 // Wiped reports whether the line has been cleared.
@@ -222,30 +225,30 @@ func (s *Store) AddLogs(ctx context.Context, runID int64, entries []LogEntry) er
 	}
 	rows := make([][]any, 0, len(entries))
 	for _, e := range entries {
-		rows = append(rows, []any{runID, e.Server, e.HopIndex, e.WorldTime, e.Action, e.SourceIP})
+		rows = append(rows, []any{runID, e.Server, e.HopIndex, e.WorldTime, e.Action, e.SourceIP, e.Severity})
 	}
 	_, err := s.pool.CopyFrom(ctx, pgx.Identifier{"run_log"},
-		[]string{"run_id", "server", "hop_index", "world_time", "action", "source_ip"},
+		[]string{"run_id", "server", "hop_index", "world_time", "action", "source_ip", "severity"},
 		pgx.CopyFromRows(rows))
 	return err
 }
 
 // LogsOn returns the lines this run left on one server, oldest first.
 func (s *Store) LogsOn(ctx context.Context, runID int64, server string) ([]LogEntry, error) {
-	return collect2(ctx, s, `SELECT id, server, hop_index, world_time, action, source_ip, wiped_with
+	return collect2(ctx, s, `SELECT id, server, hop_index, world_time, action, source_ip, wiped_with, severity
 		FROM run_log WHERE run_id = $1 AND server = $2 ORDER BY id`, runID, server, scanLog)
 }
 
 // LogsOfRun returns every line this run left, oldest first. An investigation
 // reads them to walk the route back.
 func (s *Store) LogsOfRun(ctx context.Context, runID int64) ([]LogEntry, error) {
-	return collect(ctx, s, `SELECT id, server, hop_index, world_time, action, source_ip, wiped_with
+	return collect(ctx, s, `SELECT id, server, hop_index, world_time, action, source_ip, wiped_with, severity
 		FROM run_log WHERE run_id = $1 ORDER BY id`, runID, scanLog)
 }
 
 func scanLog(row pgx.CollectableRow) (LogEntry, error) {
 	var e LogEntry
-	err := row.Scan(&e.ID, &e.Server, &e.HopIndex, &e.WorldTime, &e.Action, &e.SourceIP, &e.WipedWith)
+	err := row.Scan(&e.ID, &e.Server, &e.HopIndex, &e.WorldTime, &e.Action, &e.SourceIP, &e.WipedWith, &e.Severity)
 	return e, err
 }
 
@@ -259,6 +262,137 @@ func (s *Store) WipeLogs(ctx context.Context, runID int64, server string, versio
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
+}
+
+// The states an investigation can be in.
+const (
+	// InvestigationRunning is a walk still coming.
+	InvestigationRunning = "RUNNING"
+	// InvestigationStalled is a walk that found a cleared log and has
+	// nothing left to follow.
+	InvestigationStalled = "STALLED"
+	// InvestigationAtGateway is a walk that reached the player.
+	InvestigationAtGateway = "REACHED_GATEWAY"
+)
+
+// Investigation is an organisation walking a route back after a break-in.
+type Investigation struct {
+	ID            int64
+	RunID         int64
+	AccountID     int64
+	Target        string
+	Route         []string
+	Severity      int
+	Position      int
+	State         string
+	Due           int64
+	Reconstructed bool
+	Fined, Seized bool
+	StartedAt     time.Time
+}
+
+// StartInvestigation writes down a walk that is about to begin.
+func (s *Store) StartInvestigation(ctx context.Context, in Investigation) (int64, error) {
+	var id int64
+	err := s.pool.QueryRow(ctx, `INSERT INTO investigation
+		(run_id, target, route, severity, state, due, started_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+		in.RunID, in.Target, in.Route, in.Severity, in.State, in.Due, in.StartedAt).Scan(&id)
+	return id, err
+}
+
+// DueInvestigations returns the walks whose next step has come: the run's
+// online time has passed what the step was waiting for. The account is
+// carried along, because what happens next has to reach the player's browser.
+func (s *Store) DueInvestigations(ctx context.Context) ([]Investigation, error) {
+	rows, err := s.pool.Query(ctx, `SELECT i.id, i.run_id, r.account_id, i.target, i.route,
+			i.severity, i.position, i.state, i.due, i.reconstructed, i.fined, i.seized, i.started_at
+		FROM investigation i JOIN run r ON r.id = i.run_id
+		WHERE i.state = $1 AND r.active AND i.due <= r.exposure_seconds
+		ORDER BY i.id`, InvestigationRunning)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, scanInvestigation)
+}
+
+// InvestigationsOfRun returns every walk against this run, oldest first.
+func (s *Store) InvestigationsOfRun(ctx context.Context, runID int64) ([]Investigation, error) {
+	return collect(ctx, s, `SELECT i.id, i.run_id, r.account_id, i.target, i.route,
+			i.severity, i.position, i.state, i.due, i.reconstructed, i.fined, i.seized, i.started_at
+		FROM investigation i JOIN run r ON r.id = i.run_id
+		WHERE i.run_id = $1 ORDER BY i.id`, runID, scanInvestigation)
+}
+
+func scanInvestigation(row pgx.CollectableRow) (Investigation, error) {
+	var in Investigation
+	err := row.Scan(&in.ID, &in.RunID, &in.AccountID, &in.Target, &in.Route, &in.Severity,
+		&in.Position, &in.State, &in.Due, &in.Reconstructed, &in.Fined, &in.Seized, &in.StartedAt)
+	return in, err
+}
+
+// SaveInvestigation writes back where a walk has got to.
+func (s *Store) SaveInvestigation(ctx context.Context, in Investigation) error {
+	_, err := s.pool.Exec(ctx, `UPDATE investigation
+		SET position = $2, state = $3, due = $4, reconstructed = $5, fined = $6, seized = $7
+		WHERE id = $1`, in.ID, in.Position, in.State, in.Due, in.Reconstructed, in.Fined, in.Seized)
+	return err
+}
+
+// Fine takes money whether the account holds it or not: an obligation is not
+// a purchase, and what is left of the balance is a debt. It returns the
+// balance afterwards.
+func (s *Store) Fine(ctx context.Context, runID int64, amount int64) (int64, error) {
+	var left int64
+	err := s.pool.QueryRow(ctx, `UPDATE bank_account SET balance_clean = balance_clean - $2
+		WHERE run_id = $1 AND is_primary RETURNING balance_clean`, runID, amount).Scan(&left)
+	return left, err
+}
+
+// SeizeSoftware takes one program off the gateway and reports which. The
+// dearest version goes: a seizure is meant to hurt.
+func (s *Store) SeizeSoftware(ctx context.Context, runID int64, software string, version int) error {
+	_, err := s.pool.Exec(ctx, "DELETE FROM run_software WHERE run_id = $1 AND software = $2 AND version = $3",
+		runID, software, version)
+	return err
+}
+
+// Debtor is a run that owes money, or has been owing it.
+type Debtor struct {
+	RunID     int64
+	AccountID int64
+	Exposure  int64
+	Balance   int64
+	Since     *int64
+	Charged   int
+	Missed    int
+}
+
+// Debtors returns the active runs whose balance has fallen below the
+// threshold, and those still inside a window they have not climbed out of.
+// One query serves the whole instance.
+func (s *Store) Debtors(ctx context.Context, threshold int64) ([]Debtor, error) {
+	rows, err := s.pool.Query(ctx, `SELECT r.id, r.account_id, r.exposure_seconds,
+			b.balance_clean, r.debt_since, r.debt_charged, r.debt_missed
+		FROM run r JOIN bank_account b ON b.run_id = r.id AND b.is_primary
+		WHERE r.active AND (b.balance_clean < $1 OR r.debt_since IS NOT NULL)
+		ORDER BY r.id`, threshold)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Debtor, error) {
+		var d Debtor
+		err := row.Scan(&d.RunID, &d.AccountID, &d.Exposure, &d.Balance, &d.Since, &d.Charged, &d.Missed)
+		return d, err
+	})
+}
+
+// SaveDebt writes back where a debt stands. A nil since clears it: the player
+// has climbed out.
+func (s *Store) SaveDebt(ctx context.Context, runID int64, since *int64, charged, missed int) error {
+	_, err := s.pool.Exec(ctx, `UPDATE run SET debt_since = $2, debt_charged = $3, debt_missed = $4
+		WHERE id = $1`, runID, since, charged, missed)
+	return err
 }
 
 // Spend takes clean money from the run's primary account and reports whether
