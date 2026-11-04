@@ -5,7 +5,8 @@ import { ApiError, api, type AlertDelta, type Line } from './api';
 
 const WELCOME: Line[] = [
   { text: 'DarkNode', kind: 'head' },
-  { text: 'Type `help` for the commands, `about` for the licence.', kind: 'dim' },
+  { text: '`help` lists the commands, `about` the licence.', kind: 'dim' },
+  { text: 'New here? `run new`, then read the handbook: `connect 10.0.0.2`.', kind: 'dim' },
   { text: '' },
 ];
 

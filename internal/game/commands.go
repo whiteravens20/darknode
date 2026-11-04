@@ -749,7 +749,9 @@ func (e *Env) runCmd(ctx context.Context, c cmd) (Result, error) {
 		}
 		return Result{Changed: true, Lines: []Line{
 			{Text: "New run started. Your gateway is online.", Kind: KindOK},
-			{Text: "Type `status` to see what you have.", Kind: KindDim},
+			{Text: "  `status` shows what you have, `missions` what somebody will pay for.", Kind: KindDim},
+			{Text: "  If this is your first run: the handbook is a machine like any other.", Kind: KindDim},
+			{Text: "  `connect 10.0.0.2`, then `cat /help/start.txt`.", Kind: KindDim},
 		}}, nil
 	}
 	return e.runTool(ctx, c)
