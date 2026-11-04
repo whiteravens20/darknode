@@ -154,6 +154,13 @@ export function SignIn({
         ))}
       </nav>
 
+      {!window.isSecureContext && (
+        <p className="mb-4 rounded border border-amber-700/60 bg-amber-950/40 p-3 text-sm text-amber-200">
+          This instance is served over plain HTTP, and the browser will not let a page like that do
+          the work a sign-up needs. Reach it over HTTPS, or through <code>http://localhost</code>.
+        </p>
+      )}
+
       {closed ? (
         <p className="rounded border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-300">
           This instance is not taking new agents. Ask whoever runs it for an account.
