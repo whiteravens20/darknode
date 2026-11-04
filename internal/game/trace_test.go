@@ -167,6 +167,12 @@ func TestOnlyAnActAgainstTheServerStartsTheTrace(t *testing.T) {
 	if out := say(t, env, p, ctx, "trace"); !strings.Contains(out, "Nobody is working out") {
 		t.Errorf("trace with nothing running:\n%s", out)
 	}
+	// Breaking into a public service for what it keeps behind root is still
+	// a break-in, but nobody traces a reader.
+	say(t, env, p, ctx, "run pass_breaker")
+	if tr, _ := live.Trace(p.AccountID); tr != nil {
+		t.Error("a public service started working out where its reader was")
+	}
 	say(t, env, p, ctx, "disconnect")
 
 	// Masking the monitor is preparation: it runs before anybody notices.

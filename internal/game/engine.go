@@ -443,6 +443,13 @@ func (e *Engine) ArmTrace(account int64, run *store.Run) {
 		e.mu.Unlock()
 		return
 	}
+	// A public service does not work out where its readers are. Breaking
+	// into one for what it keeps behind root is still a break-in, and it
+	// still goes in the log, but nobody comes down the line for it.
+	if r.conn.Target.Type().Public() {
+		e.mu.Unlock()
+		return
+	}
 	r.runID = run.ID
 	r.meter = hasTool(run, traceTool)
 	r.trace = newTrace(r.conn, run.Gateway.Security, run.HasRoot, now)
