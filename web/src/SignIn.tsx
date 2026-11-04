@@ -126,7 +126,10 @@ export function SignIn({
 
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
-      <h1 className="font-mono text-3xl font-semibold text-emerald-400">DarkNode</h1>
+      <h1 className="flex items-center gap-3 font-mono text-3xl font-semibold text-emerald-400">
+        <img src="/favicon.svg" alt="" width={36} height={36} className="rounded-lg" />
+        DarkNode
+      </h1>
       <p className="mt-1 mb-6 text-sm text-neutral-400">
         A self-hosted hacking simulator. Break in, cover your tracks, outrun the trace.
       </p>

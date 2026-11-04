@@ -1,3 +1,5 @@
+<img src="web/public/icon.png" alt="" width="96" align="right" />
+
 # DarkNode
 
 > A self-hosted hacking simulator for the browser: break in, cover your tracks, outrun the trace.
