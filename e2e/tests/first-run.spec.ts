@@ -78,6 +78,14 @@ test('an agent signs up, starts a run, reads it, and comes back to it', async ({
     await expect(page.getByText(/Links\s+\d+ known servers/)).toBeVisible();
   });
 
+  await test.step('the handbook is published, and reads without a break-in', async () => {
+    await command(page, 'connect 10.0.0.2');
+    await expect(page.getByTitle('Connection')).toHaveText(/^on DarkNode Handbook/);
+    await command(page, 'cat /help/start.txt');
+    await expect(page.getByText(/You are an agent with one computer/)).toBeVisible();
+    await command(page, 'disconnect');
+  });
+
   await test.step('a server tells you nothing until it is probed', async () => {
     await command(page, 'servers');
     await expect(page.getByText(/172\.16\.10\.1\s+Meridian Savings\s+not probed/)).toBeVisible();
@@ -151,13 +159,12 @@ test('an agent signs up, starts a run, reads it, and comes back to it', async ({
     await command(page, 'clear');
     await command(page, 'bounce clear');
 
-    // The bank is out of reach with a starting kit — its proxy needs a
-    // program the shop sells — so this is shown on the handbook machine.
-    // Not the practice machine: the run already holds root there, and root
-    // lasts, so there would be no way in left to work on. What is proved
-    // here is the trace itself: it starts when there is an act against the
-    // server, it is pushed to the page, and leaving ends it.
-    await command(page, 'connect 10.0.0.2');
+    // The main bank is out of reach with a starting kit — its proxy needs a
+    // program the shop sells — but its branch terminal is not, and it is
+    // private, so somebody there does come looking. Not the practice machine:
+    // the run already holds root on it, and root lasts, so there would be no
+    // way in left to work on.
+    await command(page, 'connect 172.16.10.9');
     await command(page, 'trace');
     await expect(page.getByText(/Nobody is working out where you are/)).toBeVisible();
     await expect(page.getByTitle('Trace')).toBeHidden();

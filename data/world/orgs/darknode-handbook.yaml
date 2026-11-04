@@ -1,0 +1,199 @@
+# The handbook is published, not hidden: a player who cannot read it cannot
+# learn the thing it teaches. It is a public service, so it is open to read
+# and nothing on it starts a trace — the practice machine next door is the one
+# that is there to be broken into.
+
+id: darknode-handbook
+name: DarkNode Handbook
+type: NEWS
+faction: UNDERGROUND
+location: { x: 44, y: 36 }
+servers:
+  - id: darknode-help
+    name: DarkNode Handbook
+    ip: 10.0.0.2
+    security: 1
+    files:
+      - path: /help/start.txt
+        size_mb: 1
+        content: |
+          You are an agent with one computer, a gateway, and a list of
+          addresses. Work comes as contracts. Money buys better programs and
+          better hardware; a name buys harder contracts.
+
+          `help` lists the commands. `status` shows what you have. `servers`
+          lists the addresses you know, and `missions` the work on offer.
+
+          The rest of this machine is the handbook. Read it in this order:
+            /help/finding.txt      how to find anything
+            /help/breaking-in.txt  how to get into a machine
+            /help/traces.txt       who is looking for you while you work
+            /help/logs.txt         what you leave behind
+            /help/after.txt        what happens once you have gone
+            /help/work.txt         contracts, money, and what you owe
+
+          Nothing in this game is decided by your screen. Every timer, every
+          roll and every outcome is the server's; the page only shows you what
+          it says. Opening the browser's tools shows you the page.
+      - path: /help/finding.txt
+        size_mb: 1
+        content: |
+          FINDING ANYTHING
+
+          `servers` is the list of addresses you have. An address on its own
+          tells you nothing else: not what kind of machine it is, not how well
+          it is defended.
+
+          `probe <ip>` is what turns an address into something you can plan
+          against: the kind of organisation, its security level from one to
+          ten, and the layers in front of it. It needs AddressProbe, which you
+          start with. Probe before you go anywhere.
+
+          The register at 10.10.10.10 is public: connect to it and `links`
+          lists every organisation that has an address, a page at a time. It
+          gives you names, not addresses. `lookup <text>` turns a name you
+          already have an address for back into that address, and nothing more.
+
+          New addresses come two ways: a contract names the machine it wants
+          something from, and the files on machines you break into mention
+          others. There is no list of everything.
+      - path: /help/breaking-in.txt
+        size_mb: 1
+        content: |
+          GETTING IN
+
+          Build a route first. `bounce add <ip>` puts a relay on it, `bounce`
+          shows it, `bounce clear` empties it. You may use as many relays as
+          your gateway has network cards — two, to start with. An internet
+          provider or a university makes the best relay: they keep the least
+          and answer the slowest. A public service will not pass a break-in
+          through at all.
+
+          `connect <ip>` goes through the route you built. A public service
+          answers at once; anything else takes a moment to answer, and then
+          you are inside with no rights at all.
+
+          The way in has layers, and the server decides their order: the proxy
+          first, then the firewall, then the password. `tools` lists your
+          programs and `run <program>` sets one to work. The password layer is
+          what gives you root, and root is what lets you read, copy and
+          destroy.
+
+          A monitor is not a layer in the way. It makes the trace against you
+          much faster, and MonitorMask hides you from it — run it first, and
+          let it finish, before you touch anything else.
+
+          Programs share your processor. Two at once take twice as long each;
+          that is a limit, not a trick. A faster processor always helps, and
+          your memory decides how many may run at all.
+
+          `disconnect` ends it. Everything you opened closes with it, except
+          the root you won: that stays yours for the rest of the run, which is
+          why working out a route in advance is worth the time.
+      - path: /help/traces.txt
+        size_mb: 1
+        content: |
+          WHO IS LOOKING FOR YOU
+
+          Connect to something private and nothing happens. Touch it — set a
+          program against a layer, or read what needed root — and the
+          organisation starts working out where you are.
+
+          A trace is a cost spread over the nodes of your route, burned at a
+          rate your target's security and its monitor set. `trace` shows you
+          roughly how far it has come; with TraceMeter it shows the exact
+          figure and which hop it stands on.
+
+          Two things buy you time: more relays, because each one is ground the
+          trace has to cover, and a masked monitor, because a monitor makes it
+          almost twice as fast.
+
+          On a server anybody watches — one with a monitor, or security five
+          and above — the administrator answers as the trace comes in. At
+          three fifths of the way they close one of the layers you opened. At
+          seven tenths they cut you off the target, and the trace does not stop
+          for that: it keeps coming down your route. When it reaches your
+          gateway, the run is over.
+
+          Get out before that. A clean exit is a decision, not luck.
+      - path: /help/logs.txt
+        size_mb: 1
+        content: |
+          WHAT YOU LEAVE BEHIND
+
+          Every machine on your route writes down where the traffic came from,
+          and the machine you came for writes down the connection and
+          everything you did on it. Those lines are the only evidence that you
+          were there.
+
+          `log` shows your lines on the machine you are on; it needs root.
+          `log wipe` clears them and needs LogWiper. Version one leaves a mark
+          somebody competent could still read, version two leaves nothing, and
+          version three leaves nothing and no sign that the log was touched at
+          all.
+
+          To end the trail you have to clear it on the target and on every
+          relay — and a relay means root on that relay, which means breaking
+          into it as well. A longer route is a slower trace and more cleaning
+          up: that is the trade, and it is the whole game.
+
+          One more thing the logs are good for. If an administrator has cut you
+          off the target and the trace is still coming, clearing your lines on
+          a hop it has not reached yet takes the line it was following away.
+          The trace stops where it stands and you keep the run. You need root
+          on that hop already; there is no time to win it then.
+      - path: /help/after.txt
+        size_mb: 1
+        content: |
+          AFTER YOU HAVE GONE
+
+          Leaving does not settle it. An organisation that finds your lines in
+          its log reads them and works the route back, one operator at a time.
+          It moves only while you are playing: your own time is the clock it
+          runs on, and nobody tells you it has begun.
+
+          Where it gets to decides what it costs you. If it loses the trail at
+          a log you cleared, nothing happens at all. If it works its way back
+          along your relays, a fine arrives. If it gets to the last hop before
+          your gateway, they come for your gear and take a program. If it
+          reaches the gateway, they have you, and the run is over. A government
+          office does not stop to write: for them the last hop is enough.
+
+          A government or a bank reads a log the same day. A university takes a
+          term, and an internet provider longer still. What you did matters
+          too: reading something somebody marked sensitive is one thing,
+          taking a copy worse, destroying it worse again.
+
+          A break-in with every log cleared and nothing loud done is silence.
+          That is what clean means here.
+      - path: /help/work.txt
+        size_mb: 1
+        content: |
+          WORK, MONEY, AND WHAT YOU OWE
+
+          `missions` is the board: a few contracts at a time, each naming a
+          machine and a file. `mission accept <#>` takes one on, and it comes
+          with the address of its target. `mission submit <#>` delivers it,
+          and `mission abandon <#>` drops it — whoever was paying remembers
+          that.
+
+          A contract is done by doing it. For a theft, the copy has to be on
+          your gateway; for a destruction, the file has to be gone. Either must
+          have happened after you took the contract on: taking the file first
+          and the contract afterwards counts for nothing.
+
+          `cp <path>` brings a file down to your gateway. It takes time — your
+          modem's only job — and the trace runs while it does. `rm <path>`
+          destroys one, and that is yours alone: nobody else's world changes.
+          A file somebody marked sensitive needs FileCopier to take and
+          FileShredder to destroy. You start with both.
+
+          Harder work asks for a name you have earned, and pays for it. A
+          contract with a deadline counts it in the time you spend playing, not
+          in the days of the calendar.
+
+          `bank` shows what you have. `shop` sells programs for clean money —
+          the firewall and proxy openers are what take you past your first
+          target. Fall far enough below nothing and somebody starts collecting:
+          interest grows while you play, and if the window runs out twice, the
+          run is over.
