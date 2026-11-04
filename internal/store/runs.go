@@ -535,6 +535,25 @@ func (s *Store) DeletedFiles(ctx context.Context, runID int64, server string) (m
 	return out, rows.Err()
 }
 
+// GoneFiles returns every file this run has destroyed, keyed by server and
+// path, so that nothing offers work on something that is not there any more.
+func (s *Store) GoneFiles(ctx context.Context, runID int64) (map[string]bool, error) {
+	rows, err := s.pool.Query(ctx, "SELECT server, path FROM run_file WHERE run_id = $1 AND deleted", runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var server, path string
+		if err := rows.Scan(&server, &path); err != nil {
+			return nil, err
+		}
+		out[server+"\x00"+path] = true
+	}
+	return out, rows.Err()
+}
+
 // The states a contract passes through.
 const (
 	MissionAvailable = "AVAILABLE"

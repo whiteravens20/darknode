@@ -378,3 +378,41 @@ func TestTheBoardAlwaysOffersSomethingWithinReach(t *testing.T) {
 			len(missions), run.Reputation)
 	}
 }
+
+// TestNothingIsOfferedOnAFileThisRunDestroyed is the second thing a
+// playthrough found: a contract asked for a file the same run had destroyed
+// an hour before, which no amount of play could deliver.
+func TestNothingIsOfferedOnAFileThisRunDestroyed(t *testing.T) {
+	env, _, accounts := engineEnv(t, "agent")
+	ctx := context.Background()
+	run, err := env.Store.ActiveRun(ctx, accounts[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Destroy everything the catalogue has worth taking but one file.
+	const spared = "/data/ledger.db"
+	for _, s := range env.World.Servers {
+		for _, f := range s.Files {
+			if !f.Sensitive || f.Encrypted || f.Path == spared {
+				continue
+			}
+			if err := env.Store.DeleteFile(ctx, run.ID, s.ID, f.Path, env.Now()); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	missions, err := env.fillBoard(ctx, run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(missions) == 0 {
+		t.Fatal("the board is empty although one file is still there")
+	}
+	for _, m := range missions {
+		if m.File != spared {
+			t.Errorf("a contract asks for %s on %s, which this run destroyed", m.File, m.Target)
+		}
+	}
+}

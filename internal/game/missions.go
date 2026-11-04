@@ -73,12 +73,19 @@ func (e *Env) fillBoard(ctx context.Context, run *store.Run) ([]store.Mission, e
 			taken[m.Target] = true
 		}
 	}
+	// Nothing is offered on a file this run has already destroyed: it is not
+	// there to take or to destroy again.
+	gone, err := e.Store.GoneFiles(ctx, run.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	var fresh []store.Mission
 	for i := len(missions); standing < MaxAvailable; i++ {
 		// One stream of numbers per run, per draw: the same run drawing its
 		// fourth contract always draws the same one.
 		dice := rand.New(rand.NewPCG(uint64(run.ID), uint64(i)))
-		m, ok := e.drawMission(run, dice, taken, false)
+		m, ok := e.drawMission(run, dice, taken, gone, false)
 		if !ok {
 			break // the catalogue has nothing left this player could take on
 		}
@@ -93,7 +100,7 @@ func (e *Env) fillBoard(ctx context.Context, run *store.Run) ([]store.Mission, e
 	// happens, one contract is drawn that they can actually take.
 	if !withinReach(missions, fresh, run.Reputation) {
 		dice := rand.New(rand.NewPCG(uint64(run.ID), uint64(len(missions)+len(fresh)+1)))
-		if m, ok := e.drawMission(run, dice, taken, true); ok {
+		if m, ok := e.drawMission(run, dice, taken, gone, true); ok {
 			fresh = append(fresh, m)
 		}
 	}
@@ -121,7 +128,7 @@ func withinReach(standing, fresh []store.Mission, reputation int) bool {
 
 // drawMission makes one contract for the run. With reach set, it stays inside
 // what the player's name can take instead of reaching a band above it.
-func (e *Env) drawMission(run *store.Run, dice *rand.Rand, taken map[string]bool, reach bool) (store.Mission, bool) {
+func (e *Env) drawMission(run *store.Run, dice *rand.Rand, taken, gone map[string]bool, reach bool) (store.Mission, bool) {
 	// A band the player's name can carry, with a chance of one above it: a
 	// board of nothing but easy work is no board at all.
 	var bands []difficulty
@@ -150,7 +157,7 @@ func (e *Env) drawMission(run *store.Run, dice *rand.Rand, taken map[string]bool
 			continue
 		}
 		for _, f := range s.Files {
-			if f.Sensitive && !f.Encrypted {
+			if f.Sensitive && !f.Encrypted && !gone[s.ID+"\x00"+f.Path] {
 				pool = append(pool, candidate{server: s, file: f})
 			}
 		}
