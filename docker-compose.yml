@@ -50,7 +50,10 @@ services:
       start_period: 30s
 
   game:
-    image: ghcr.io/whiteravens20/darknode:${DARKNODE_VERSION:-main}
+    # There is no release yet, so the tag to run is a snapshot: `edge` is the
+    # one built from `main` and tried by the testers, `dev` the newest build
+    # of the branch the work happens on. See .env.example.
+    image: ghcr.io/whiteravens20/darknode:${DARKNODE_VERSION:-edge}
     # Build it yourself instead of pulling with:  docker compose build
     build:
       context: .

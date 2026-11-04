@@ -1,0 +1,172 @@
+# ── DarkNode — Snapshot build ─────────────────────────────────────────────────
+#
+# Builds the image ON DEMAND (manual run) from the branch it is started on and
+# publishes it to the GitHub Container Registry, so an instance can be pulled
+# and played without building anything locally. Nothing is built automatically,
+# and a snapshot is not a release.
+#
+# Run it:  Actions → "Snapshot build" → Run workflow, from `dev` or `main`.
+#
+# Tags and scan, by the branch it is run from:
+#   dev   → :dev  + :dev-<7-char-sha>    the scan REPORTS ONLY
+#   main  → :edge + :edge-<7-char-sha>   the scan FAILS on HIGH or CRITICAL:
+#                                        the last check before a closed test
+# Any other branch is refused, so nothing but `main` can move `:edge`.
+#
+# The image is pushed by its digest alone and scanned at that digest; the tags
+# are put on it only after the scan, and from `main` only when the scan passed.
+# A pull of a tag therefore never meets an image the scan has not read.
+#
+# To play a snapshot: set DARKNODE_VERSION=<tag> in the .env beside
+# docker-compose.yml.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Snapshot build
+
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+
+jobs:
+  build-push:
+    name: Build the ${{ github.ref_name }} snapshot
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      tags: ${{ steps.tag.outputs.value }}
+      version: ${{ steps.tag.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Work out the tags
+        id: tag
+        env:
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          case "$BRANCH" in
+            dev) PREFIX=dev ;;
+            main) PREFIX=edge ;;
+            *) echo "::error::A snapshot is built from dev or main, not from ${BRANCH}."; exit 1 ;;
+          esac
+          echo "version=${PREFIX}-${SHA:0:7}" >> "$GITHUB_OUTPUT"
+          {
+            echo "value<<EOF"
+            echo "${REGISTRY}/${IMAGE_NAME}:${PREFIX}"
+            echo "${REGISTRY}/${IMAGE_NAME}:${PREFIX}-${SHA:0:7}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to the registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push, by digest alone
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: Dockerfile
+          # No tag yet: the `tag` job puts the tags on this digest once the
+          # scan has read it.
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+          # The binary says which snapshot it is, so a player and a bug report
+          # can name the same build.
+          build-args: |
+            VERSION=${{ steps.tag.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  scan:
+    name: Trivy scan
+    needs: build-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+
+    steps:
+      # The checkout is for .trivyignore, which is the only place a finding is
+      # acknowledged, with its reason.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Log in to the registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan the digest that was pushed
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-push.outputs.digest }}
+          severity: HIGH,CRITICAL
+          trivyignores: .trivyignore
+          limit-severities-for-sarif: true
+          # From `main` a finding stops the snapshot; from `dev` it is reported
+          # and the run stays green.
+          exit-code: ${{ github.ref_name == 'main' && '1' || '0' }}
+          format: sarif
+          output: trivy-snapshot.sarif
+
+      - name: Upload the findings
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        if: always()
+        with:
+          sarif_file: trivy-snapshot.sarif
+          category: trivy-snapshot
+
+  tag:
+    name: Tag the scanned image
+    needs: [build-push, scan]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to the registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Put the tags on the scanned digest
+        env:
+          TAGS: ${{ needs.build-push.outputs.tags }}
+          DIGEST: ${{ needs.build-push.outputs.digest }}
+        run: |
+          args=()
+          while IFS= read -r tag; do [ -n "$tag" ] && args+=(--tag "$tag"); done <<< "$TAGS"
+          docker buildx imagetools create "${args[@]}" "${REGISTRY}/${IMAGE_NAME}@${DIGEST}"
+          # Every tag must name the very digest the scan read.
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            got=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')
+            [ "$got" = "$DIGEST" ] || { echo "::error::$tag names $got, not the scanned $DIGEST"; exit 1; }
+            echo "$tag -> $got"
+          done <<< "$TAGS"

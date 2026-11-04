@@ -59,6 +59,15 @@ for when hosting is in [SECURITY.md](SECURITY.md#for-whoever-runs-an-instance).
 docker compose up -d
 ```
 
+That pulls the image the `.env` names. There is no release yet, so what you
+run is a snapshot built on demand: `edge` is the one built from `main` and
+given to the testers, `dev` the newest build of the branch the work happens
+on, and `edge-<sha>` or `dev-<sha>` one exact build to hold still. The
+snapshot of `main` is published only when a vulnerability scan of that exact
+image has passed
+([docker-snapshot.yml](.github/workflows/docker-snapshot.yml)). To build it
+yourself instead, `docker compose build`.
+
 The game is then on <http://localhost:8080>. It is published on the loopback
 address: put a reverse proxy with TLS in front before anyone else reaches it,
 and leave `DARKNODE_COOKIE_SECURE` at `true` when you do.
