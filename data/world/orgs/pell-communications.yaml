@@ -22,6 +22,12 @@ servers:
         content: |
           Peering: Arcadia Telecom (settlement-free), two regional carriers
           under contract. Nobody here reads the traffic; nobody is paid to.
+      - path: /data/subscribers.db
+        size_mb: 7
+        sensitive: true
+        content: |
+          Every line this exchange terminates, with the name it is billed to
+          and the address it runs to.
 
   - id: pell-relay-west
     name: Pell Relay West

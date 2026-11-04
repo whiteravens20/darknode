@@ -73,22 +73,29 @@ func (e *Env) fillBoard(ctx context.Context, run *store.Run) ([]store.Mission, e
 			taken[m.Target] = true
 		}
 	}
-	if standing >= MaxAvailable {
-		return missions, nil
-	}
-
 	var fresh []store.Mission
 	for i := len(missions); standing < MaxAvailable; i++ {
 		// One stream of numbers per run, per draw: the same run drawing its
 		// fourth contract always draws the same one.
 		dice := rand.New(rand.NewPCG(uint64(run.ID), uint64(i)))
-		m, ok := e.drawMission(run, dice, taken)
+		m, ok := e.drawMission(run, dice, taken, false)
 		if !ok {
 			break // the catalogue has nothing left this player could take on
 		}
 		taken[m.Target] = true
 		fresh = append(fresh, m)
 		standing++
+	}
+
+	// A board a player cannot take anything from is not a board. The draw
+	// reaches a band above their name on purpose, and a run of those can fill
+	// the board with work that is only something to aim at; when that
+	// happens, one contract is drawn that they can actually take.
+	if !withinReach(missions, fresh, run.Reputation) {
+		dice := rand.New(rand.NewPCG(uint64(run.ID), uint64(len(missions)+len(fresh)+1)))
+		if m, ok := e.drawMission(run, dice, taken, true); ok {
+			fresh = append(fresh, m)
+		}
 	}
 	if len(fresh) == 0 {
 		return missions, nil
@@ -99,8 +106,22 @@ func (e *Env) fillBoard(ctx context.Context, run *store.Run) ([]store.Mission, e
 	return e.Store.MissionsOfRun(ctx, run.ID)
 }
 
-// drawMission makes one contract for the run.
-func (e *Env) drawMission(run *store.Run, dice *rand.Rand, taken map[string]bool) (store.Mission, bool) {
+// withinReach reports whether anything on the board can be taken on by a
+// player of this reputation.
+func withinReach(standing, fresh []store.Mission, reputation int) bool {
+	for _, group := range [][]store.Mission{standing, fresh} {
+		for _, m := range group {
+			if m.State == store.MissionAvailable && m.ReputationRequired <= reputation {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// drawMission makes one contract for the run. With reach set, it stays inside
+// what the player's name can take instead of reaching a band above it.
+func (e *Env) drawMission(run *store.Run, dice *rand.Rand, taken map[string]bool, reach bool) (store.Mission, bool) {
 	// A band the player's name can carry, with a chance of one above it: a
 	// board of nothing but easy work is no board at all.
 	var bands []difficulty
@@ -113,7 +134,7 @@ func (e *Env) drawMission(run *store.Run, dice *rand.Rand, taken map[string]bool
 		bands = difficulties[:1]
 	}
 	band := bands[dice.IntN(len(bands))]
-	if len(bands) < len(difficulties) && dice.IntN(4) == 0 {
+	if !reach && len(bands) < len(difficulties) && dice.IntN(4) == 0 {
 		band = difficulties[len(bands)]
 	}
 

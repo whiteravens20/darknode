@@ -4,6 +4,7 @@ package game
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -332,5 +333,48 @@ func TestAContractTooBigIsRefused(t *testing.T) {
 	}
 	if out := say(t, env, p, ctx, "mission sideways 1"); !strings.Contains(out, "Usage") {
 		t.Errorf("an invented subcommand:\n%s", out)
+	}
+}
+
+// TestTheBoardAlwaysOffersSomethingWithinReach is a lock-out that only
+// playing found. The draw reaches one band above the player's name on
+// purpose, and a run of those filled the board with work nobody at that name
+// could take; with the board full, nothing new was ever drawn, and the run
+// could not go on.
+func TestTheBoardAlwaysOffersSomethingWithinReach(t *testing.T) {
+	env, _, accounts := engineEnv(t, "agent")
+	ctx := context.Background()
+	run, err := env.Store.ActiveRun(ctx, accounts[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A board full of work far beyond a new agent's name.
+	var beyond []store.Mission
+	for i := range MaxAvailable {
+		beyond = append(beyond, store.Mission{
+			RunID: run.ID, Kind: MissionSteal, Target: fmt.Sprintf("out-of-reach-%d", i),
+			File: "/data/something.db", Client: "Somebody", Difficulty: "INSANE",
+			Reward: 20000, ReputationRequired: 25, ReputationGain: 8,
+			State: store.MissionAvailable, CreatedAt: env.Now(),
+		})
+	}
+	if err := env.Store.AddMissions(ctx, beyond); err != nil {
+		t.Fatal(err)
+	}
+
+	missions, err := env.fillBoard(ctx, run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	within := 0
+	for _, m := range missions {
+		if m.State == store.MissionAvailable && m.ReputationRequired <= run.Reputation {
+			within++
+		}
+	}
+	if within == 0 {
+		t.Fatalf("a board of %d contracts and not one a player of reputation %d could take",
+			len(missions), run.Reputation)
 	}
 }
